@@ -1,0 +1,4 @@
+*.ipynb
+test*
+__pycache__/
+*.html
