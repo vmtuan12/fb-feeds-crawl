@@ -31,9 +31,9 @@ class DriverSelector():
     @classmethod
     def get_driver(cls, driver_type: int, **kwargs) -> Chrome:
         if driver_type == cls.SELENIUM:
-            return CustomDriver(kwargs)
+            return CustomDriver(**kwargs)
         else:
-            return CustomUCDriver(kwargs)
+            return CustomUCDriver(**kwargs)
 
 class CustomDriver(Chrome):
     def __init__(self, options: Options = None, service: Service = None, keep_alive: bool = True) -> None:
@@ -43,23 +43,28 @@ class CustomDriver(Chrome):
         else:
             chrome_options = options
 
-        super().__init__(chrome_options, service, keep_alive)
+        if service == None:
+            chrome_service = Service(ChromeDriverManager().install())
+        else:
+            chrome_service = service
 
-    def find_element_by_xpath(self, value: str | None = None, implicitly_wait_time: float | None = None) -> EC.WebElement:
+        super().__init__(chrome_options, chrome_service, keep_alive)
+
+    def find_element_by_xpath(self, value: str, implicitly_wait_time: float = None) -> EC.WebElement:
         if implicitly_wait_time != None:
             self.implicitly_wait(implicitly_wait_time)
             
         data = super().find_element(By.XPATH, value)
         return data
     
-    def find_elements_by_xpath(self, value: str | None = None, implicitly_wait_time: float | None = None) -> EC.List[EC.WebElement]:
+    def find_elements_by_xpath(self, value: str, implicitly_wait_time: float = None) -> EC.List[EC.WebElement]:
         if implicitly_wait_time != None:
             self.implicitly_wait(implicitly_wait_time)
             
         data = super().find_elements(By.XPATH, value)
         return data
     
-    def find_element_by_id(self, value: str | None = None, implicitly_wait_time: float | None = None) -> EC.WebElement:
+    def find_element_by_id(self, value: str, implicitly_wait_time: float = None) -> EC.WebElement:
         if implicitly_wait_time != None:
             self.implicitly_wait(implicitly_wait_time)
             
@@ -76,21 +81,21 @@ class CustomUCDriver(uc.Chrome):
 
         super().__init__(options, user_data_dir, driver_executable_path, browser_executable_path, port, enable_cdp_events, desired_capabilities, advanced_elements, keep_alive, log_level, headless, version_main, patcher_force_close, suppress_welcome, use_subprocess, debug, no_sandbox, user_multi_procs, **kw)
 
-    def find_element_by_xpath(self, value: str | None = None, implicitly_wait_time: float | None = None) -> EC.WebElement:
+    def find_element_by_xpath(self, value: str, implicitly_wait_time: float = None) -> EC.WebElement:
         if implicitly_wait_time != None:
             self.implicitly_wait(implicitly_wait_time)
             
         data = super().find_element(By.XPATH, value)
         return data
     
-    def find_elements_by_xpath(self, value: str | None = None, implicitly_wait_time: float | None = None) -> EC.List[EC.WebElement]:
+    def find_elements_by_xpath(self, value: str, implicitly_wait_time: float = None) -> EC.List[EC.WebElement]:
         if implicitly_wait_time != None:
             self.implicitly_wait(implicitly_wait_time)
             
         data = super().find_elements(By.XPATH, value)
         return data
     
-    def find_element_by_id(self, value: str | None = None, implicitly_wait_time: float | None = None) -> EC.WebElement:
+    def find_element_by_id(self, value: str, implicitly_wait_time: float = None) -> EC.WebElement:
         if implicitly_wait_time != None:
             self.implicitly_wait(implicitly_wait_time)
             
