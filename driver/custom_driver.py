@@ -24,13 +24,14 @@ import re
 from datetime import datetime, timedelta
 import pytz
 
-class DriverSelector():
+class DriverType():
     SELENIUM = 0
     UC = 1
 
+class DriverSelector():
     @classmethod
-    def get_driver(cls, driver_type: int, **kwargs) -> Chrome:
-        if driver_type == cls.SELENIUM:
+    def get_driver(cls, driver_type: int = DriverType.SELENIUM, **kwargs) -> Chrome:
+        if driver_type == DriverType.SELENIUM:
             return CustomDriver(**kwargs)
         else:
             return CustomUCDriver(**kwargs)
