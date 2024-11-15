@@ -12,8 +12,10 @@ class FbPageXpathUtils():
     This is to find reaction count along with each post text
     """
     XPATH_ADDITIONAL_REACTION = './following-sibling::div[.//div[@class="fl ac am"]][1]//div[@class="fl ac am"][1]//span[last()]'
+    XPATH_ADDITIONAL_REACTION_ALTER = './following-sibling::div[.//div[@role="button"]][1]//div[text()][last()]'
 
     """
     This is to find post time along with each post text
     """
     XPATH_ADDITIONAL_POST_TIME = './preceding-sibling::*[1]//div[not(@data-focusable)]//div[@data-mcomponent="TextArea"]//span[not(@role)]'
+    XPATH_ADDITIONAL_POST_TIME_ALTER = './preceding-sibling::*[.//div[contains(@data-mcomponent, "TextArea")]][1]//div[contains(@data-mcomponent, "TextArea")][last()]//span[not(@role)]'
