@@ -2,3 +2,5 @@
 test*
 __pycache__/
 *.html
+proxies_dirs/
+proxy_list.txt
