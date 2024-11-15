@@ -14,15 +14,16 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import NoSuchElementException
 
 class FbPageDriverWorker(DriverWorker):
-    def __init__(self, page_name: str, min_post_count: int = 10) -> None:
-        self.url = f"https://m.facebook.com/{page_name}?locale=en_US"
+    def __init__(self, page_name_or_id: str, min_post_count: int = 10) -> None:
+        self.url = f"https://m.facebook.com/{page_name_or_id}?locale=en_US"
         self.min_post_count = min_post_count
 
-        self.window_w, self.window_h = 1600, 1200
+        self.window_w, self.window_h = 1200, 900
 
-        # proxy_dir = ProxiesUtils.get_proxy_dir()
+        proxy_dir = ProxiesUtils.get_proxy_dir()
         options = DriverUtils.create_option(arguments_dict={
-            "--window-size": f"{self.window_w},{self.window_h}"
+            "--window-size": f"{self.window_w},{self.window_h}",
+            "--load-extension": proxy_dir
         })
         driver = DriverSelector.get_driver(driver_type=DriverType.SELENIUM, options=options)
 
@@ -57,6 +58,14 @@ class FbPageDriverWorker(DriverWorker):
             print("Error", e, "\n$$$$$$$\n")
             print(p.get_attribute("outerHTML"))
             return None
+    
+    def _get_scroll_value(self, is_up = False) -> float:
+        base_value = max(float(self.driver.execute_script("return document.documentElement.scrollHeight")), 
+                        float(self.driver.execute_script("return document.body.scrollHeight")), 
+                        float(self.driver.execute_script("""return document.querySelector('[data-type="vscroller"]').scrollHeight""")))
+        
+        divisor = 5 if not is_up else 10
+        return (base_value / divisor) * random.uniform(1.0, 2.0)
 
     def start(self):
         user_agent = UserAgentUtils.get_user_agent_fb_page()
@@ -74,20 +83,21 @@ class FbPageDriverWorker(DriverWorker):
 
         count_scroll = 0
         vscroller_el = """document.querySelector('[data-type="vscroller"]')"""
+
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
             if len(posts) >= self.min_post_count:
                 break
 
-            self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {self.window_h / 2});")
-            self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {self.window_h / 2})""")
+            self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {self._get_scroll_value()});")
+            self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {self._get_scroll_value()})""")
             count_scroll += 1
 
-            if count_scroll % 3 == 0:
-                self.driver.execute_script(f"window.scrollTo(0, window.scrollY - {self.window_h / 3});")
-                self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop - {self.window_h / 3})""")
-
             sleep(random.uniform(1.0, 3.0))
+
+            if count_scroll % 3 == 0 or count_scroll % 7 == 0:
+                self.driver.execute_script(f"window.scrollTo(0, window.scrollY - {self._get_scroll_value(is_up=True)});")
+                self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop - {self._get_scroll_value(is_up=True)})""")
 
         texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
         for t in texts_load_more:
