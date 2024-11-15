@@ -23,19 +23,31 @@ class FbPageDriverWorker(DriverWorker):
         proxy_dir = ProxiesUtils.get_proxy_dir()
         options = DriverUtils.create_option(arguments_dict={
             "--window-size": f"{self.window_w},{self.window_h}",
-            "--load-extension": proxy_dir
+            "--load-extension": proxy_dir,
+            "--disable-blink-features": "AutomationControlled"
         })
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+
         driver = DriverSelector.get_driver(driver_type=DriverType.SELENIUM, options=options)
 
         super().__init__(driver)
 
     def _get_raw_post_dict(self, p: WebElement, now: datetime, has_no_img: bool = False) -> dict:
         try:
-            reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
-            reaction_count = ParserUtils.approx_reactions(reactions.get_attribute("innerHTML"))
-
-            post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
+            try:
+                post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
+            except Exception as get_time_exc:
+                post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME_ALTER)
+                
             real_post_time_str = ParserUtils.approx_post_time_str(now=now, raw_post_time=post_time.get_attribute("innerHTML"))
+
+            try:
+                reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
+            except Exception as get_react_exc:
+                reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION_ALTER)
+
+            reaction_count = ParserUtils.approx_reactions(reactions.get_attribute("innerHTML"))
 
             images = p.find_elements(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_IMAGES)
             list_img_src = None if has_no_img else [i.get_attribute("src") for i in images]
@@ -64,7 +76,7 @@ class FbPageDriverWorker(DriverWorker):
                         float(self.driver.execute_script("return document.body.scrollHeight")), 
                         float(self.driver.execute_script("""return document.querySelector('[data-type="vscroller"]').scrollHeight""")))
         
-        divisor = 5 if not is_up else 10
+        divisor = 8 if not is_up else 15
         return (base_value / divisor) * random.uniform(1.0, 2.0)
 
     def start(self):
@@ -74,8 +86,10 @@ class FbPageDriverWorker(DriverWorker):
 
         self.driver.get(self.url)
 
+        temp_posts = []
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+            temp_posts = posts.copy()
             check_page_ready = len(posts) > 0
             if check_page_ready:
                 break
