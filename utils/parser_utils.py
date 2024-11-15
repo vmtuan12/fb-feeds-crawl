@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 class ParserUtils():
     @classmethod
     def match_text_and_number(cls, text: str) -> str | None:
-        pattern = r'[0-9a-zA-Z]+'
+        pattern = r'[0-9a-zA-Z\.]+'
         match = re.search(pattern, text)
         if match:
             return match.group()
@@ -31,7 +31,8 @@ class ParserUtils():
         return real_post_time.strftime("%Y-%m-%d %H:%M:%S")
     
     @classmethod
-    def approx_reactions(cls, reactions: str) -> int:
+    def approx_reactions(cls, raw_reactions: str) -> int:
+        reactions = cls.match_text_and_number(raw_reactions)
         last_word = reactions[-1]
         if not ('0' <= last_word and last_word <= '9'):
             number_part = reactions[:-1].replace(",", ".")
