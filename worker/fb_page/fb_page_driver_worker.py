@@ -98,6 +98,7 @@ class FbPageDriverWorker(DriverWorker):
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": user_agent})
 
         self.driver.get(self.url)
+        print(f"Load {self.url} successfully")
 
         page_is_ready = self._check_ready()
         if not page_is_ready:

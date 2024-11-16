@@ -89,6 +89,7 @@ class ProxiesUtils():
         try:
             requests.get("https://ipinfo.io/json", timeout=3, proxies=proxy_json)
         except requests.exceptions.ProxyError as err:
+            print("ERROR PROXY", proxy_dir)
             GeneralUtils.remove_dir(proxy_dir)
             return False
 
