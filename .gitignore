@@ -5,3 +5,4 @@ __pycache__/
 proxies_dirs/
 proxy_list.txt
 test/
+init_pages.txt
