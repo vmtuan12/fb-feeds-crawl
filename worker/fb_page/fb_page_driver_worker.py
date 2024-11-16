@@ -6,24 +6,27 @@ from utils.user_agent_utils import UserAgentUtils
 from utils.xpath_utils import FbPageXpathUtils
 from utils.parser_utils import ParserUtils
 from entities.entities import RawPostEntity
+from custom_exception.exceptions import *
 from time import sleep
 import random
 import pytz
 from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import NoSuchElementException
+import json
 
 class FbPageDriverWorker(DriverWorker):
     def __init__(self, page_name_or_id: str, min_post_count: int = 10) -> None:
+        self.id = page_name_or_id
         self.url = f"https://m.facebook.com/{page_name_or_id}?locale=en_US"
         self.min_post_count = min_post_count
 
         self.window_w, self.window_h = 1200, 900
 
-        proxy_dir = ProxiesUtils.get_proxy_dir()
+        self.proxy_dir = ProxiesUtils.get_proxy_dir()
         options = DriverUtils.create_option(arguments_dict={
             "--window-size": f"{self.window_w},{self.window_h}",
-            "--load-extension": proxy_dir,
+            "--load-extension": self.proxy_dir,
             "--disable-blink-features": "AutomationControlled"
         })
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -78,22 +81,29 @@ class FbPageDriverWorker(DriverWorker):
         
         divisor = 8 if not is_up else 15
         return (base_value / divisor) * random.uniform(1.0, 2.0)
+    
+    def _check_ready(self) -> bool:
+        attempt = 0
+        while (attempt <= 3):
+            posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+            if len(posts) > 0:
+                return True
+            sleep(1)
+
+        return False
 
     def start(self):
+        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         user_agent = UserAgentUtils.get_user_agent_fb_page()
-        print(user_agent)
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": user_agent})
 
         self.driver.get(self.url)
 
+        page_is_ready = self._check_ready()
+        if not page_is_ready:
+            raise PageNotReadyException(proxy_dir=self.proxy_dir)
+
         temp_posts = []
-        while (True):
-            posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
-            temp_posts = posts.copy()
-            check_page_ready = len(posts) > 0
-            if check_page_ready:
-                break
-            sleep(1)
 
         count_scroll = 0
         vscroller_el = """document.querySelector('[data-type="vscroller"]')"""
@@ -122,12 +132,18 @@ class FbPageDriverWorker(DriverWorker):
         posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
         posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
-        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+        data_list = []
 
         for p in posts_without_image_bg:
             post_entity = self._get_raw_post_dict(p=p, now=now)
-            print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
+            data_list.append(post_entity)
 
         for p in posts_with_image_bg:
             post_entity = self._get_raw_post_dict(p=p, now=now, has_no_img=True)
-            print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
+            data_list.append(post_entity)
+            # print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
+
+        with open(f'test/{self.id.replace(".", "_")}.json', "w") as f:
+            json.dump(data_list, f, ensure_ascii=False, indent=4)
+
+        self.on_close()
