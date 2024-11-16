@@ -1,5 +1,8 @@
 import os
 import secrets
+import requests
+import json
+from utils.general_utils import GeneralUtils
 
 class ProxiesUtils():
     BASE_PROXY_FOLDER = f"{os.getcwd()}/assets/proxies_dirs"
@@ -59,7 +62,7 @@ class ProxiesUtils():
         );
         """ % (proxy_host, proxy_port, proxy_user, proxy_pass)
 
-        spec_proxy_dir = f"{cls.BASE_PROXY_FOLDER}/{proxy_host}_{proxy_port}"
+        spec_proxy_dir = f"{cls.BASE_PROXY_FOLDER}/{proxy_host}_{proxy_port}_{proxy_user}_{proxy_pass}"
         if not os.path.exists(spec_proxy_dir):
             os.makedirs(spec_proxy_dir)
 
@@ -73,3 +76,20 @@ class ProxiesUtils():
         list_proxies_dirs = os.listdir(cls.BASE_PROXY_FOLDER)
         selection = secrets.choice(list_proxies_dirs)
         return f"{cls.BASE_PROXY_FOLDER}/{selection}"
+
+    @classmethod
+    def proxy_is_working(cls, proxy_dir: str) -> str:
+        proxy_host, proxy_port, proxy_user, proxy_pass = (proxy_dir.split("/"))[-1].split("_")
+        url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
+        proxy_json = {
+            "http": url,
+            "https": url
+        }
+
+        try:
+            requests.get("https://ipinfo.io/json", timeout=3, proxies=proxy_json)
+        except requests.exceptions.ProxyError as err:
+            GeneralUtils.remove_dir(proxy_dir)
+            return False
+
+        return True
