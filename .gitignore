@@ -4,3 +4,4 @@ __pycache__/
 *.html
 proxies_dirs/
 proxy_list.txt
+test/
