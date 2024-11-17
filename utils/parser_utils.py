@@ -27,6 +27,8 @@ class ParserUtils():
             real_post_time = now - timedelta(minutes=time_int)
         elif unit == "h":
             real_post_time = now - timedelta(hours=time_int)
+        elif unit == "d":
+            real_post_time = now - timedelta(days=time_int)
 
         return real_post_time.strftime("%Y-%m-%d %H:%M:%S")
     
