@@ -12,7 +12,7 @@ import random
 import pytz
 from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 import json
 
 class FbPageDriverWorker(DriverWorker):
@@ -64,6 +64,8 @@ class FbPageDriverWorker(DriverWorker):
                                             post_time=real_post_time_str).to_dict()
             
             return raw_post_entity
+        except StaleElementReferenceException as sere:
+            raise sere
         except Exception as e:
             print("Error", e, "\n$$$$$$$\n")
             print(p.get_attribute("outerHTML"))
@@ -121,21 +123,27 @@ class FbPageDriverWorker(DriverWorker):
         
         sleep(1)
 
-        posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
-        posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+        while (True):
+            try:
+                posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
+                posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
-        data_list = []
+                data_list = []
 
-        for p in posts_without_image_bg:
-            post_entity = self._get_raw_post_dict(p=p, now=now)
-            data_list.append(post_entity)
+                for p in posts_without_image_bg:
+                    post_entity = self._get_raw_post_dict(p=p, now=now)
+                    data_list.append(post_entity)
 
-        for p in posts_with_image_bg:
-            post_entity = self._get_raw_post_dict(p=p, now=now, has_no_img=True)
-            data_list.append(post_entity)
-            print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
+                for p in posts_with_image_bg:
+                    post_entity = self._get_raw_post_dict(p=p, now=now, has_no_img=True)
+                    data_list.append(post_entity)
+
+                break
+            except StaleElementReferenceException as sere:
+                pass
+            # print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
 
         with open(f'test/{page_name_or_id.replace(".", "_")}.json', "w") as f:
             json.dump(data_list, f, ensure_ascii=False, indent=4)
 
-        self.on_close()
+        # self.on_close()
