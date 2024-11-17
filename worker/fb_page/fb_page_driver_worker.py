@@ -42,7 +42,6 @@ class FbPageDriverWorker(DriverWorker):
                 post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
             except Exception as get_time_exc:
                 post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME_ALTER)
-                
             real_post_time_str = ParserUtils.approx_post_time_str(now=now, raw_post_time=post_time.get_attribute("innerHTML"))
 
             try:
@@ -60,9 +59,6 @@ class FbPageDriverWorker(DriverWorker):
             except NoSuchElementException as e:
                 post_text = p.find_element(by='xpath', value=".//span[text()]")
 
-            if post_text == None or post_text.text.strip() == "":
-                print("==========\n", post_text.get_attribute("outerHTML"), "\n==========\n")
-
             raw_post_entity = RawPostEntity(text=(post_text.text if post_text.text.strip() != "" else post_text.get_attribute("innerHTML")),
                                             images=list_img_src,
                                             reaction_count=reaction_count,
@@ -79,7 +75,7 @@ class FbPageDriverWorker(DriverWorker):
                         float(self.driver.execute_script("return document.body.scrollHeight")), 
                         float(self.driver.execute_script("""return document.querySelector('[data-type="vscroller"]').scrollHeight""")))
         
-        divisor = 8 if not is_up else 15
+        divisor = 8 if not is_up else 6
         return (base_value / divisor) * random.uniform(1.0, 2.0)
     
     def _check_ready(self) -> bool:
@@ -88,6 +84,7 @@ class FbPageDriverWorker(DriverWorker):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
             if len(posts) > 0:
                 return True
+            attempt += 1
             sleep(1)
 
         return False
