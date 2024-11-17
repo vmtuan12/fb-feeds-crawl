@@ -70,12 +70,11 @@ class FbPageDriverWorker(DriverWorker):
             return None
     
     def _get_scroll_value(self, is_up = False) -> float:
-        base_value = max(float(self.driver.execute_script("return document.documentElement.scrollHeight")), 
-                        float(self.driver.execute_script("return document.body.scrollHeight")), 
-                        float(self.driver.execute_script("""return document.querySelector('[data-type="vscroller"]').scrollHeight""")))
+        # base_value = max(float(self.driver.execute_script("return document.documentElement.scrollHeight")), 
+        #                 float(self.driver.execute_script("return document.body.scrollHeight")), 
+        #                 float(self.driver.execute_script("""return document.querySelector('[data-type="vscroller"]').scrollHeight""")))
         
-        divisor = 8 if not is_up else 6
-        return (base_value / divisor) * random.uniform(1.0, 2.0)
+        return random.uniform(-20.0, 500.0)
     
     def _check_ready(self) -> bool:
         attempt = 0
@@ -112,21 +111,15 @@ class FbPageDriverWorker(DriverWorker):
             if len(posts) >= self.min_post_count:
                 break
 
-            self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {self._get_scroll_value()});")
-            self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {self._get_scroll_value()})""")
-            count_scroll += 1
-
-            sleep(random.uniform(1.0, 3.0))
-
-            if count_scroll % 3 == 0 or count_scroll % 7 == 0:
-                self.driver.execute_script(f"window.scrollTo(0, window.scrollY - {self._get_scroll_value(is_up=True)});")
-                self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop - {self._get_scroll_value(is_up=True)})""")
+            scroll_value = self._get_scroll_value()
+            self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
+            self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {scroll_value})""")
 
         texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
         for t in texts_load_more:
             self.driver.execute_script("arguments[0].click();", t)
         
-        sleep(random.uniform(1.0, 3.0))
+        sleep(1)
 
         posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
         posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
@@ -140,9 +133,9 @@ class FbPageDriverWorker(DriverWorker):
         for p in posts_with_image_bg:
             post_entity = self._get_raw_post_dict(p=p, now=now, has_no_img=True)
             data_list.append(post_entity)
-            # print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
+            print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
 
-        with open(f'test/{target_url.replace(".", "_")}.json', "w") as f:
+        with open(f'test/{page_name_or_id.replace(".", "_")}.json', "w") as f:
             json.dump(data_list, f, ensure_ascii=False, indent=4)
 
         self.on_close()
