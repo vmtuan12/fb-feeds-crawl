@@ -16,9 +16,8 @@ from selenium.common.exceptions import NoSuchElementException
 import json
 
 class FbPageDriverWorker(DriverWorker):
-    def __init__(self, page_name_or_id: str, min_post_count: int = 10) -> None:
-        self.id = page_name_or_id
-        self.url = f"https://m.facebook.com/{page_name_or_id}?locale=en_US"
+    def __init__(self, min_post_count: int = 10) -> None:
+        self.base_url = "https://m.facebook.com/{}?locale=en_US"
         self.min_post_count = min_post_count
 
         self.window_w, self.window_h = 1200, 900
@@ -89,13 +88,15 @@ class FbPageDriverWorker(DriverWorker):
 
         return False
 
-    def start(self):
+    def start(self, page_name_or_id: str):
+        target_url = self.base_url.format(page_name_or_id)
+
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         user_agent = UserAgentUtils.get_user_agent_fb_page()
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": user_agent})
 
-        self.driver.get(self.url)
-        print(f"Load {self.url} successfully")
+        self.driver.get(target_url)
+        print(f"Load {target_url} successfully")
 
         page_is_ready = self._check_ready()
         if not page_is_ready:
@@ -141,7 +142,7 @@ class FbPageDriverWorker(DriverWorker):
             data_list.append(post_entity)
             # print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
 
-        with open(f'test/{self.id.replace(".", "_")}.json', "w") as f:
+        with open(f'test/{target_url.replace(".", "_")}.json', "w") as f:
             json.dump(data_list, f, ensure_ascii=False, indent=4)
 
         self.on_close()
