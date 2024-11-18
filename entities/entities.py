@@ -23,6 +23,12 @@ class Builder(ABC):
         pass
 
 class RawPostEntityBuilder(Builder):
+    def __init__(self):
+        self.text = None
+        self.images = None
+        self.reaction_count = None
+        self.post_time = None
+
     def set_text(self, text: str):
         self.text = text
         return self
