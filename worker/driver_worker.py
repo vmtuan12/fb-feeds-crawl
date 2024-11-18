@@ -10,5 +10,8 @@ class DriverWorker(BaseWorker):
     def _check_ready(self) -> bool:
         return True
     
-    def on_close(self):
+    def __del__(self):
+        self.driver.close()
+    
+    def __delete__(self):
         self.driver.close()

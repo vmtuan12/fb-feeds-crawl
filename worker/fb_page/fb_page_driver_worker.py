@@ -145,5 +145,3 @@ class FbPageDriverWorker(DriverWorker):
 
         with open(f'test/{page_name_or_id.replace(".", "_")}.json', "w") as f:
             json.dump(data_list, f, ensure_ascii=False, indent=4)
-
-        # self.on_close()
