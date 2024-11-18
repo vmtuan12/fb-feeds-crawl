@@ -1,4 +1,5 @@
 import psycopg2
+from kafka import KafkaConsumer
 
 class DbConnector():
     def __init__(self, host: str, port: int, 
@@ -56,9 +57,41 @@ class DbConnectorBuilder():
         self.password = password
         return self
     
-    def build_pg(self) -> PostgresConnector:
-        return PostgresConnector(host=self.host,
-                                port=self.port,
-                                user=self.username,
-                                password=self.password,
-                                db_name=self.db_name)
+    def build_pg(self):
+        return psycopg2.connect(
+            host=self.host,
+            port=self.port,
+            user=self.username,
+            password=self.password,
+            database=self.db_name,
+            connect_timeout=10
+        )
+
+class KafkaConsumerBuilder():
+    def __init__(self):
+        self.topics = []
+        self.brokers = []
+        self.group_id = "default"
+        self.enable_auto_commit = True
+
+    def set_topics(self, topics: str | list[str]):
+        self.topics = topics
+        return self
+
+    def set_brokers(self, brokers: str):
+        self.brokers = brokers
+        return self
+
+    def set_group_id(self, group_id: str):
+        self.group_id = group_id
+        return self
+
+    def set_enable_auto_commit(self, enable_auto_commit: bool):
+        self.enable_auto_commit = enable_auto_commit
+        return self
+    
+    def build(self):
+        return KafkaConsumer(self.topics,
+                            group_id=self.group_id,
+                            bootstrap_servers=self.brokers,
+                            enable_auto_commit=self.enable_auto_commit)
