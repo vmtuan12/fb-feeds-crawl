@@ -7,6 +7,7 @@ from utils.xpath_utils import FbPageXpathUtils
 from utils.parser_utils import ParserUtils
 from entities.entities import RawPostEntity
 from custom_exception.exceptions import *
+from custom_logging.logging import FileLogging, TerminalLogging
 from time import sleep
 import random
 import pytz
@@ -14,6 +15,7 @@ from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 import json
+import traceback
 
 class FbPageDriverWorker(DriverWorker):
     def __init__(self, min_post_count: int = 10) -> None:
@@ -67,8 +69,8 @@ class FbPageDriverWorker(DriverWorker):
         except StaleElementReferenceException as sere:
             raise sere
         except Exception as e:
-            print("Error", e, "\n$$$$$$$\n")
-            print(p.get_attribute("outerHTML"))
+            FileLogging.log_error(file_path='/home/mhtuan/work/fb/custom_logging/error.log', 
+                                  message=f"{traceback.format_exc()}\n{p.get_attribute("outerHTML")}\n")
             return None
     
     def _get_scroll_value(self, is_up = False) -> float:
@@ -97,7 +99,7 @@ class FbPageDriverWorker(DriverWorker):
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": user_agent})
 
         self.driver.get(target_url)
-        print(f"Load {target_url} successfully")
+        TerminalLogging.log_info(f"Load {target_url} successfully")
 
         page_is_ready = self._check_ready()
         if not page_is_ready:
