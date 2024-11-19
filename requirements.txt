@@ -1,0 +1,4 @@
+selenium
+undetected-chromedriver
+kafka-python
+beautifulsoup4
