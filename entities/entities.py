@@ -6,6 +6,13 @@ class BaseEntity():
     def to_dict(self) -> dict:
         return self.__dict__
     
+class CommandEntity(BaseEntity):
+    def __init__(self, cmd_type: str, page: str | None = None) -> None:
+        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
+        self.command_time = now
+        self.type = cmd_type
+        self.page = page
+
 class RawPostEntity(BaseEntity):
 
     def __init__(self, text: str, images: list[str], reaction_count: int, post_time: str, page: str):
