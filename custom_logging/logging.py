@@ -16,14 +16,14 @@ class TerminalLogging():
     def log_info(message: str):
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(CustomFormatter('%(asctime)s %(levelname)s: %(message)s', timezone='Asia/Ho_Chi_Minh'))
-        logging.basicConfig(level=logging.DEBUG, handlers=[console_handler])
+        logging.basicConfig(level=logging.INFO, handlers=[console_handler])
         logging.info(message)
 
     @staticmethod
     def log_error(message: str):
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(CustomFormatter('%(asctime)s %(levelname)s: %(message)s', timezone='Asia/Ho_Chi_Minh'))
-        logging.basicConfig(level=logging.DEBUG, handlers=[console_handler])
+        logging.basicConfig(level=logging.INFO, handlers=[console_handler])
         logging.error(message)
 
 class FileLogging():
