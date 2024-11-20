@@ -4,13 +4,20 @@ from worker.fb_page.fb_page_driver_worker import FbPageDriverWorker
 from custom_exception.exceptions import *
 from utils.proxies_utils import ProxiesUtils
 import traceback
+from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder
+from utils.constants import KafkaConnectionConstant as Kafka
 
 class ConsumerWorker():
     def __init__(self) -> None:
         self.thread_local_data = threading.local()
+        self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .build()
+        self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .set_group_id("test")\
+                                                    .set_topics("fb.command")\
+                                                    .build()
 
     def get_worker(self) -> FbPageDriverWorker:
-        thread_id = threading.current_thread().name
         worker = getattr(self.thread_local_data, 'worker', None)
         if worker is None:
             worker = FbPageDriverWorker()
@@ -39,12 +46,5 @@ class ConsumerWorker():
                 print(traceback.format_exc())        
 
     def start(self):
-        futures = []
         with ThreadPoolExecutor(max_workers=2) as executor:
-            # futures.append(executor.submit(self.run_worker, "thoibaonganhang.vn"))
-            # futures.append(executor.submit(self.run_worker, "beatvn.network"))
-            # futures.append(executor.submit(self.run_worker, "Theanh28"))
-            futures.append(executor.submit(self.run_worker, "K14vn"))
-
-        for future in futures:
-            future.result()
+            executor.submit(self.run_worker, "K14vn")

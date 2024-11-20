@@ -8,6 +8,9 @@ from utils.parser_utils import ParserUtils
 from entities.entities import RawPostEntity
 from custom_exception.exceptions import *
 from custom_logging.logging import TerminalLogging
+from connectors.db_connector import KafkaProducerBuilder
+from utils.constants import KafkaConnectionConstant as Kafka
+from kafka import KafkaProducer
 from time import sleep
 import random
 import pytz
@@ -18,7 +21,7 @@ import json
 import traceback
 
 class FbPageDriverWorker(DriverWorker):
-    def __init__(self, min_post_count: int = 10) -> None:
+    def __init__(self, kafka_producer: KafkaProducer | None = None, min_post_count: int = 10) -> None:
         self.base_url = "https://m.facebook.com/{}?locale=en_US"
         self.min_post_count = min_post_count
 
@@ -32,6 +35,12 @@ class FbPageDriverWorker(DriverWorker):
         })
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+
+        if kafka_producer == None:
+            self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
+                                                        .build()
+        else:
+            self.kafka_producer = kafka_producer
 
         driver = DriverSelector.get_driver(driver_type=DriverType.SELENIUM, options=options)
 
@@ -129,20 +138,19 @@ class FbPageDriverWorker(DriverWorker):
                 posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
                 posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
-                data_list = []
-
                 for p in posts_without_image_bg:
                     post_entity = self._get_raw_post_dict(p=p, now=now)
-                    data_list.append(post_entity)
+                    self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
 
                 for p in posts_with_image_bg:
                     post_entity = self._get_raw_post_dict(p=p, now=now, has_no_img=True)
-                    data_list.append(post_entity)
-
+                    self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
+                    
                 break
             except StaleElementReferenceException as sere:
                 pass
             # print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
+        self.kafka_producer.flush()
 
-        with open(f'test/{page_name_or_id.replace(".", "_")}.json', "w") as f:
-            json.dump(data_list, f, ensure_ascii=False, indent=4)
+        # with open(f'test/{page_name_or_id.replace(".", "_")}.json', "w") as f:
+        #     json.dump(data_list, f, ensure_ascii=False, indent=4)

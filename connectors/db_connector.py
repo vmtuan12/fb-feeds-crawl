@@ -1,5 +1,6 @@
 import psycopg2
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
+import json
 
 class DbConnector():
     def __init__(self, host: str, port: int, 
@@ -78,7 +79,7 @@ class KafkaConsumerBuilder():
         self.topics = topics
         return self
 
-    def set_brokers(self, brokers: str):
+    def set_brokers(self, brokers: list[str]):
         self.brokers = brokers
         return self
 
@@ -94,4 +95,17 @@ class KafkaConsumerBuilder():
         return KafkaConsumer(self.topics,
                             group_id=self.group_id,
                             bootstrap_servers=self.brokers,
-                            enable_auto_commit=self.enable_auto_commit)
+                            enable_auto_commit=self.enable_auto_commit,
+                            value_deserializer=lambda x: json.loads(x.decode('utf-8')))
+    
+class KafkaProducerBuilder():
+    def __init__(self):
+        self.brokers = []
+
+    def set_brokers(self, brokers: list[str]):
+        self.brokers = brokers
+        return self
+    
+    def build(self):
+        return KafkaProducer(bootstrap_servers=self.brokers, 
+                        value_serializer=lambda x: json.dumps(x).encode('utf-8'))
