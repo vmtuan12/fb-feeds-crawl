@@ -70,7 +70,7 @@ class FbPageDriverWorker(DriverWorker):
             raise sere
         except Exception as e:
             FileLogging.log_error(file_path='/home/mhtuan/work/fb/custom_logging/error.log', 
-                                  message=f"{traceback.format_exc()}\n{p.get_attribute("outerHTML")}\n")
+                                  message=f"{traceback.format_exc()}\n{p.get_attribute('outerHTML')}\n")
             return None
     
     def _get_scroll_value(self, is_up = False) -> float:
@@ -123,7 +123,9 @@ class FbPageDriverWorker(DriverWorker):
         for t in texts_load_more:
             self.driver.execute_script("arguments[0].click();", t)
         
-        sleep(1)
+        while (True):
+            if len(self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)) == 0:
+                break
 
         while (True):
             try:
