@@ -4,3 +4,4 @@ kafka-python
 beautifulsoup4
 psycopg2
 pytz
+avro
