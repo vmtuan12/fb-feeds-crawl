@@ -27,10 +27,11 @@ class ConsumerWorker():
 
             try:
                 worker.start(page_name_or_id=page_name_or_id)
+                break
             except PageNotReadyException as pe:
                 proxy_is_working = ProxiesUtils.proxy_is_working(proxy_dir=pe.proxy_dir)
                 if not proxy_is_working:
-                    delattr(self.thread_local_data, 'worker', worker)
+                    delattr(self.thread_local_data, 'worker')
                     worker = None
                     continue
 
@@ -40,9 +41,9 @@ class ConsumerWorker():
     def start(self):
         futures = []
         with ThreadPoolExecutor(max_workers=2) as executor:
-            futures.append(executor.submit(self.run_worker, "thoibaonganhang.vn"))
-            futures.append(executor.submit(self.run_worker, "beatvn.network"))
-            futures.append(executor.submit(self.run_worker, "Theanh28"))
+            # futures.append(executor.submit(self.run_worker, "thoibaonganhang.vn"))
+            # futures.append(executor.submit(self.run_worker, "beatvn.network"))
+            # futures.append(executor.submit(self.run_worker, "Theanh28"))
             futures.append(executor.submit(self.run_worker, "K14vn"))
 
         for future in futures:
