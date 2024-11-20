@@ -6,6 +6,8 @@ from utils.proxies_utils import ProxiesUtils
 import traceback
 from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder
 from utils.constants import KafkaConnectionConstant as Kafka
+from utils.command_utils import CommandType, CommandUtils
+from custom_logging.logging import TerminalLogging
 
 class ConsumerWorker():
     def __init__(self) -> None:
@@ -14,27 +16,33 @@ class ConsumerWorker():
                                                     .build()
         self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .set_group_id("test")\
-                                                    .set_topics("fb.command")\
+                                                    .set_topics(Kafka.TOPIC_COMMAND)\
                                                     .build()
 
     def get_worker(self) -> FbPageDriverWorker:
         worker = getattr(self.thread_local_data, 'worker', None)
         if worker is None:
-            worker = FbPageDriverWorker()
+            worker = FbPageDriverWorker(kafka_producer=self.kafka_producer)
             setattr(self.thread_local_data, 'worker', worker)
         
         return worker
     
-    def run_worker(self, page_name_or_id):
-        print(threading.current_thread().name)
+    def run_worker(self, page_name_or_id: str, cmd_type: str):
+        TerminalLogging.log_info(threading.current_thread().name + f" is running {cmd_type}")
+
         worker = None
         while (True):
             if worker == None:
                 worker = self.get_worker()
 
             try:
-                worker.start(page_name_or_id=page_name_or_id)
+                if cmd_type == CommandType.SCRAPE_PAGE:
+                    worker.start(page_name_or_id=page_name_or_id)
+                elif cmd_type == CommandType.CLEAR_CACHE:
+                    worker._clear_cache()
+
                 break
+
             except PageNotReadyException as pe:
                 proxy_is_working = ProxiesUtils.proxy_is_working(proxy_dir=pe.proxy_dir)
                 if not proxy_is_working:
@@ -43,8 +51,27 @@ class ConsumerWorker():
                     continue
 
             except Exception as e:
-                print(traceback.format_exc())        
+                TerminalLogging.log_error(traceback.format_exc())
+
+        TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type}")
 
     def start(self):
         with ThreadPoolExecutor(max_workers=2) as executor:
-            executor.submit(self.run_worker, "K14vn")
+            
+            for message in self.kafka_consumer:
+                command = message.value
+                cmd_type = CommandUtils.get_command_type(command=command)
+                page = CommandUtils.get_page(command=command)
+                TerminalLogging.log_info(cmd_type, page)
+                executor.submit(self.run_worker, page, cmd_type)
+
+    def clean_up(self):
+        self.kafka_producer.flush()
+        self.kafka_producer.close(timeout=5)
+        self.kafka_consumer.close(autocommit=False)
+
+    def __del__(self):
+        self.clean_up()
+    
+    def __delete__(self):
+        self.clean_up()
