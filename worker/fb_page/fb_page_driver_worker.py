@@ -46,7 +46,7 @@ class FbPageDriverWorker(DriverWorker):
 
         super().__init__(driver)
 
-    def _get_raw_post_dict(self, p: WebElement, now: datetime, has_no_img: bool = False) -> dict:
+    def _get_raw_post_dict(self, p: WebElement, now: datetime, page_name_or_id: str, has_no_img: bool = False) -> dict:
         try:
             try:
                 post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
@@ -72,7 +72,8 @@ class FbPageDriverWorker(DriverWorker):
             raw_post_entity = RawPostEntity(text=(post_text.text if post_text.text.strip() != "" else post_text.get_attribute("innerHTML")),
                                             images=list_img_src,
                                             reaction_count=reaction_count,
-                                            post_time=real_post_time_str).to_dict()
+                                            post_time=real_post_time_str,
+                                            page=page_name_or_id).to_dict()
             
             return raw_post_entity
         except StaleElementReferenceException as sere:
@@ -138,11 +139,11 @@ class FbPageDriverWorker(DriverWorker):
                 posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
                 for p in posts_without_image_bg:
-                    post_entity = self._get_raw_post_dict(p=p, now=now)
+                    post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id)
                     self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
 
                 for p in posts_with_image_bg:
-                    post_entity = self._get_raw_post_dict(p=p, now=now, has_no_img=True)
+                    post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id, has_no_img=True)
                     self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
                     
                 break

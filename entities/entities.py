@@ -8,12 +8,13 @@ class BaseEntity():
     
 class RawPostEntity(BaseEntity):
 
-    def __init__(self, text: str, images: list[str], reaction_count: int, post_time: str):
+    def __init__(self, text: str, images: list[str], reaction_count: int, post_time: str, page: str):
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
         self.text = text
         self.images = images
         self.reaction_count = reaction_count
         self.post_time = post_time
+        self.page = page
         self.first_scraped_at = now
         self.last_updated_at = now
         

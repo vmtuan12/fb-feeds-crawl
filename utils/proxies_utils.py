@@ -3,6 +3,7 @@ import secrets
 import requests
 import json
 from utils.general_utils import GeneralUtils
+from custom_logging.logging import TerminalLogging
 
 class ProxiesUtils():
     BASE_PROXY_FOLDER = f"{os.getcwd()}/assets/proxies_dirs"
@@ -89,7 +90,7 @@ class ProxiesUtils():
         try:
             requests.get("https://ipinfo.io/json", timeout=3, proxies=proxy_json)
         except requests.exceptions.ProxyError as err:
-            print("ERROR PROXY", proxy_dir)
+            TerminalLogging.log_error(f"ERROR PROXY {proxy_dir}")
             GeneralUtils.remove_dir(proxy_dir)
             return False
 
