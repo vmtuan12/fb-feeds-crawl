@@ -1,0 +1,14 @@
+{
+    "namespace": "fb.raw_post",
+    "type": "record",
+    "name": "RawPost",
+    "fields": [
+        {"name": "text", "type": "string", "doc": "post text"},
+        {"name": "post_time", "type": ["null", "string"], "doc": "post time"},
+        {"name": "reaction_count", "type": ["null", "int"], "doc": "reaction count"},
+        {"name": "page", "type": "string", "doc": "page name"},
+        {"name": "images", "type": ["null", {"type": "array", "items": "string"}], "doc": "array of image URLs"},
+        {"name": "first_scraped_at", "type": "string", "doc": "first scraped at"},
+        {"name": "last_updated_at", "type": "string", "doc": "last updated at"}
+    ]
+}

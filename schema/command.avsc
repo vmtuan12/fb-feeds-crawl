@@ -1,0 +1,10 @@
+{
+    "namespace": "fb.command",
+    "type": "record",
+    "name": "Command",
+    "fields": [
+        {"name": "command_time", "type": "string", "doc": "post time"},
+        {"name": "type", "type": "string", "doc": "command type"},
+        {"name": "page", "type": ["null", "string"], "doc": "page name"}
+    ]
+}
