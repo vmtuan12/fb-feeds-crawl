@@ -78,8 +78,7 @@ class FbPageDriverWorker(DriverWorker):
         except StaleElementReferenceException as sere:
             raise sere
         except Exception as e:
-            TerminalLogging.log_error(file_path='/home/mhtuan/work/fb/custom_logging/error.log', 
-                                  message=f"{traceback.format_exc()}\n{p.get_attribute('outerHTML')}\n")
+            TerminalLogging.log_error(message=f"{traceback.format_exc()}\n{p.get_attribute('outerHTML')}\n")
             raise e
     
     def _get_scroll_value(self, is_up = False) -> float:
