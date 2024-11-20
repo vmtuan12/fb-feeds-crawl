@@ -7,3 +7,4 @@ proxy_list.txt
 test/
 init_pages.txt
 constants.py
+*.log
