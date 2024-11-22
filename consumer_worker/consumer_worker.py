@@ -49,6 +49,9 @@ class ConsumerWorker():
                     delattr(self.thread_local_data, 'worker')
                     worker = None
                     continue
+                
+            except PageCannotAccessException as pcae:
+                break
 
             except Exception as e:
                 TerminalLogging.log_error(traceback.format_exc())

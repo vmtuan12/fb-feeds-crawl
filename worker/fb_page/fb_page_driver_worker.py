@@ -96,6 +96,10 @@ class FbPageDriverWorker(DriverWorker):
             if len(posts) > 0:
                 return True
             attempt += 1
+
+            if ("login.php" in self.driver.current_url) or ("not found" in self.driver.title):
+                raise PageCannotAccessException()
+
             sleep(1)
 
         return False
