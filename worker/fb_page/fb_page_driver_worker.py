@@ -9,7 +9,7 @@ from entities.entities import RawPostEntity
 from custom_exception.exceptions import *
 from custom_logging.logging import TerminalLogging
 from connectors.db_connector import KafkaProducerBuilder
-from utils.constants import KafkaConnectionConstant as Kafka
+from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
 from kafka import KafkaProducer
 from time import sleep
 import random
@@ -21,7 +21,7 @@ import json
 import traceback
 
 class FbPageDriverWorker(DriverWorker):
-    def __init__(self, kafka_producer: KafkaProducer | None = None, min_post_count: int = 10) -> None:
+    def __init__(self, profile_name: str, kafka_producer: KafkaProducer | None = None, min_post_count: int = 10) -> None:
         self.base_url = "https://m.facebook.com/{}?locale=en_US"
         self.min_post_count = min_post_count
 
@@ -31,7 +31,9 @@ class FbPageDriverWorker(DriverWorker):
         options = DriverUtils.create_option(arguments_dict={
             "--window-size": f"{self.window_w},{self.window_h}",
             "--load-extension": self.proxy_dir,
-            "--disable-blink-features": "AutomationControlled"
+            "--disable-blink-features": "AutomationControlled",
+            "user-data-dir": f"{SysConstant.USER_DATA_DIR}/{profile_name}",
+            "profile-directory": "Default"
         })
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)

@@ -22,7 +22,8 @@ class ConsumerWorker():
     def get_worker(self) -> FbPageDriverWorker:
         worker = getattr(self.thread_local_data, 'worker', None)
         if worker is None:
-            worker = FbPageDriverWorker(kafka_producer=self.kafka_producer, min_post_count=50)
+            profile_name = threading.current_thread().name.split("-")[-1]
+            worker = FbPageDriverWorker(profile_name=profile_name, kafka_producer=self.kafka_producer, min_post_count=50)
             setattr(self.thread_local_data, 'worker', worker)
         
         return worker
@@ -58,15 +59,27 @@ class ConsumerWorker():
 
         TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type}")
 
-    def start(self):
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            
+    def start(self, max_workers: int = 2):
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+
             for message in self.kafka_consumer:
                 command = message.value
                 cmd_type = CommandUtils.get_command_type(command=command)
                 page = CommandUtils.get_page(command=command)
                 TerminalLogging.log_info(f"{cmd_type} {page}")
-                executor.submit(self.run_worker, page, cmd_type)
+
+                if cmd_type == CommandType.CLEAR_CACHE:
+                    for future in futures:
+                        future.result()
+                    
+                    futures.clear()
+                    for _ in range(max_workers):
+                        executor.submit(self.run_worker, page, cmd_type)
+
+                else:
+                    job = executor.submit(self.run_worker, page, cmd_type)
+                    futures.append(job)
 
     def clean_up(self):
         self.kafka_producer.flush()
