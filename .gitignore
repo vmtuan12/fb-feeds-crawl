@@ -9,3 +9,4 @@ init_pages.txt
 constants.py
 *.log
 *.tar.gz
+*.zip
