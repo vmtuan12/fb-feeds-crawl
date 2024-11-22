@@ -10,3 +10,4 @@ constants.py
 *.log
 *.tar.gz
 *.zip
+chrome_profiles/
