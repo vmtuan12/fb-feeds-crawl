@@ -5,9 +5,10 @@ from custom_exception.exceptions import *
 from utils.proxies_utils import ProxiesUtils
 import traceback
 from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder
-from utils.constants import KafkaConnectionConstant as Kafka
+from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
 from utils.command_utils import CommandType, CommandUtils
 from custom_logging.logging import TerminalLogging
+import subprocess
 
 class ConsumerWorker():
     def __init__(self) -> None:
@@ -70,6 +71,7 @@ class ConsumerWorker():
                 TerminalLogging.log_info(f"{cmd_type} {page}")
 
                 if cmd_type == CommandType.CLEAR_CACHE:
+                    subprocess.run(f"{SysConstant.CLEAR_DATA_CHROME_SCRIPT}", shell=True)
                     for future in futures:
                         future.result()
                     
