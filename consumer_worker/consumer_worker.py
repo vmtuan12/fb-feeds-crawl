@@ -65,7 +65,7 @@ class ConsumerWorker():
                 command = message.value
                 cmd_type = CommandUtils.get_command_type(command=command)
                 page = CommandUtils.get_page(command=command)
-                TerminalLogging.log_info(cmd_type, page)
+                TerminalLogging.log_info(f"{cmd_type} {page}")
                 executor.submit(self.run_worker, page, cmd_type)
 
     def clean_up(self):
