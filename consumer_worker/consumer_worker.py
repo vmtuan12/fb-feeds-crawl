@@ -22,7 +22,7 @@ class ConsumerWorker():
     def get_worker(self) -> FbPageDriverWorker:
         worker = getattr(self.thread_local_data, 'worker', None)
         if worker is None:
-            worker = FbPageDriverWorker(kafka_producer=self.kafka_producer)
+            worker = FbPageDriverWorker(kafka_producer=self.kafka_producer, min_post_count=50)
             setattr(self.thread_local_data, 'worker', worker)
         
         return worker
