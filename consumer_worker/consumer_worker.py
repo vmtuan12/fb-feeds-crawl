@@ -24,13 +24,13 @@ class ConsumerWorker():
         worker = getattr(self.thread_local_data, 'worker', None)
         if worker is None:
             profile_name = threading.current_thread().name.split("-")[-1]
-            worker = FbPageDriverWorker(profile_name=profile_name, kafka_producer=self.kafka_producer, min_post_count=50)
+            worker = FbPageDriverWorker(profile_name=profile_name, kafka_producer=self.kafka_producer, min_post_count=40)
             setattr(self.thread_local_data, 'worker', worker)
         
         return worker
     
     def run_worker(self, page_name_or_id: str, cmd_type: str):
-        TerminalLogging.log_info(threading.current_thread().name + f" is running {cmd_type}")
+        TerminalLogging.log_info(threading.current_thread().name + f" is running {cmd_type} {page_name_or_id}")
 
         worker = None
         try:
@@ -60,12 +60,14 @@ class ConsumerWorker():
 
                 except Exception as e:
                     TerminalLogging.log_error(traceback.format_exc())
+                    break
+                
         except Exception as eee:
             print(eee)
 
         TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type} {page_name_or_id}")
 
-    def start(self, max_workers: int = 2):
+    def start(self, max_workers: int = 1):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
 
