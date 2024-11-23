@@ -10,16 +10,31 @@ class ParserUtils():
             return match.group()
         
         return None
+    @classmethod
+    def match_time(cls, text: str) -> str | None:
+        pattern = r'[0-9a-zA-Z ,\.]+'
+        match = re.search(pattern, text)
+        if match:
+            return match.group().strip()
+        
+        return None
     
     @classmethod
     def approx_post_time_str(cls, now: datetime, raw_post_time: str) -> str | None:
-        post_time = cls.match_text_and_number(raw_post_time)
+        post_time = cls.match_time(raw_post_time)
         if post_time == None:
             return None
         
         if post_time.startswith("Jus"):
             return now.strftime("%Y-%m-%d %H:%M:%S")
-        
+
+        try:
+            post_time_formatted = post_time if (',' in post_time) else f"{post_time}, {datetime.now().year}"
+            real_post_time = datetime.strptime(post_time_formatted, "%b %d, %Y").strftime("%Y-%m-%d %H:%M:%S")
+            return real_post_time
+        except Exception as e:
+            real_post_time = None
+
         time_int = int(post_time[:-1])
         unit = post_time[-1]
 
