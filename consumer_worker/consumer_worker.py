@@ -33,32 +33,37 @@ class ConsumerWorker():
         TerminalLogging.log_info(threading.current_thread().name + f" is running {cmd_type}")
 
         worker = None
-        while (True):
-            if worker == None:
-                worker = self.get_worker()
+        try:
+            page_not_ready_count = 0
+            while (True):
+                if worker == None:
+                    worker = self.get_worker()
 
-            try:
-                if cmd_type == CommandType.SCRAPE_PAGE:
-                    worker.start(page_name_or_id=page_name_or_id)
-                elif cmd_type == CommandType.CLEAR_CACHE:
-                    worker._clear_cache()
+                try:
+                    if cmd_type == CommandType.SCRAPE_PAGE:
+                        worker.start(page_name_or_id=page_name_or_id)
+                    elif cmd_type == CommandType.CLEAR_CACHE:
+                        worker._clear_cache()
 
-                break
+                    break
 
-            except PageNotReadyException as pe:
-                proxy_is_working = ProxiesUtils.proxy_is_working(proxy_dir=pe.proxy_dir)
-                if not proxy_is_working:
-                    delattr(self.thread_local_data, 'worker')
-                    worker = None
-                    continue
-                
-            except PageCannotAccessException as pcae:
-                break
+                except PageNotReadyException as pe:
+                    page_not_ready_count += 1
+                    proxy_is_working = ProxiesUtils.proxy_is_working(proxy_dir=pe.proxy_dir)
+                    if (not proxy_is_working) or (page_not_ready_count % 3 == 0):
+                        delattr(self.thread_local_data, 'worker')
+                        worker = None
+                        continue
+                    
+                except PageCannotAccessException as pcae:
+                    break
 
-            except Exception as e:
-                TerminalLogging.log_error(traceback.format_exc())
+                except Exception as e:
+                    TerminalLogging.log_error(traceback.format_exc())
+        except Exception as eee:
+            print(eee)
 
-        TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type}")
+        TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type} {page_name_or_id}")
 
     def start(self, max_workers: int = 2):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
