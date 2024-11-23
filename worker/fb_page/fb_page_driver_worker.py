@@ -28,6 +28,7 @@ class FbPageDriverWorker(DriverWorker):
         self.window_w, self.window_h = 1200, 900
 
         self.proxy_dir = ProxiesUtils.get_proxy_dir()
+        print(self.proxy_dir)
         options = DriverUtils.create_option(arguments_dict={
             "--window-size": f"{self.window_w},{self.window_h}",
             "--load-extension": self.proxy_dir,
@@ -106,6 +107,11 @@ class FbPageDriverWorker(DriverWorker):
 
         return False
 
+    def _load_more_post_text(self):
+        texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
+        for t in texts_load_more:
+            self.driver.execute_script("arguments[0].click();", t)
+
     def start(self, page_name_or_id: str):
         target_url = self.base_url.format(page_name_or_id)
 
@@ -119,37 +125,60 @@ class FbPageDriverWorker(DriverWorker):
         page_is_ready = self._check_ready()
         if not page_is_ready:
             raise PageNotReadyException(proxy_dir=self.proxy_dir)
+        
+        TerminalLogging.log_info(f"{target_url} is ready")
 
         vscroller_el = """document.querySelector('[data-type="vscroller"]')"""
 
+        len_post_less_than_5 = 1
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+            TerminalLogging.log_info(f"{target_url} - {len(posts)} posts")
+            if len(posts) <= 5:
+                len_post_less_than_5 += 1
             if len(posts) >= self.min_post_count:
                 break
-
+            
+            if len_post_less_than_5 % 100 == 0:
+                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            
             scroll_value = self._get_scroll_value()
             self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
             self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {scroll_value})""")
 
-        texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
-        for t in texts_load_more:
-            self.driver.execute_script("arguments[0].click();", t)
+        self._load_more_post_text()
         
+        count_load_more = 0
         while (True):
+            TerminalLogging.log_info(f"{target_url} - wait load more")
+            count_load_more += 1
+
+            if count_load_more == 80:
+                self._load_more_post_text()
+            if count_load_more >= 150:
+                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            
             if len(self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)) == 0:
                 break
 
         while (True):
             try:
+                TerminalLogging.log_info(f"{target_url} - getting posts")
                 posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
                 posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
                 for p in posts_without_image_bg:
-                    post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id)
+                    try:
+                        post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id)
+                    except Exception as e:
+                        continue
                     self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
 
                 for p in posts_with_image_bg:
-                    post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id, has_no_img=True)
+                    try:
+                        post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id, has_no_img=True)
+                    except Exception as e:
+                        continue
                     self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
                     
                 break
