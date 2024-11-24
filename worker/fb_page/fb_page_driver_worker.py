@@ -55,27 +55,27 @@ class FbPageDriverWorker(DriverWorker):
                 post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
             except Exception as get_time_exc:
                 post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME_ALTER)
-            real_post_time_str = ParserUtils.approx_post_time_str(now=now, raw_post_time=post_time.get_attribute("innerHTML"))
+            # real_post_time_str = ParserUtils.approx_post_time_str(now=now, raw_post_time=post_time.get_attribute("innerHTML"))
 
             try:
                 reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
             except Exception as get_react_exc:
                 reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION_ALTER)
 
-            reaction_count = ParserUtils.approx_reactions(reactions.get_attribute("innerHTML"))
+            # reaction_count = ParserUtils.approx_reactions(reactions.get_attribute("innerHTML"))
 
             images = p.find_elements(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_IMAGES)
             list_img_src = None if has_no_img else [i.get_attribute("src") for i in images]
 
-            try:
-                post_text = p.find_element(by='xpath', value=".//div[text()]")
-            except NoSuchElementException as e:
-                post_text = p.find_element(by='xpath', value=".//span[text()]")
+            # try:
+            #     post_text = p.find_element(by='xpath', value=".//div[text()]")
+            # except NoSuchElementException as e:
+            #     post_text = p.find_element(by='xpath', value=".//span[text()]")
 
-            raw_post_entity = RawPostEntity(text=(post_text.text if post_text.text.strip() != "" else post_text.get_attribute("innerHTML")),
+            raw_post_entity = RawPostEntity(text=p.get_attribute("outerHTML"),
                                             images=list_img_src,
-                                            reaction_count=reaction_count,
-                                            post_time=real_post_time_str,
+                                            reaction_count=reactions.get_attribute("innerHTML"),
+                                            post_time=post_time.get_attribute("innerHTML"),
                                             page=page_name_or_id).to_dict()
             
             return raw_post_entity
@@ -90,6 +90,8 @@ class FbPageDriverWorker(DriverWorker):
         #                 float(self.driver.execute_script("return document.body.scrollHeight")), 
         #                 float(self.driver.execute_script("""return document.querySelector('[data-type="vscroller"]').scrollHeight""")))
         
+        if is_up:
+            return random.uniform(-200.0, -20.0)
         return random.uniform(-20.0, 500.0)
     
     def _check_ready(self) -> bool:
@@ -107,18 +109,17 @@ class FbPageDriverWorker(DriverWorker):
 
         return False
 
-    def _load_more_post_text(self):
-        attempt = 1
-        while (attempt <= 3):
-            try:
-                texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
-                for t in texts_load_more:
+    def _load_more_post_text(self, perform=False):
+        texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
+        print(f"load more {len(texts_load_more)} posts")
+        if perform:
+            for index, t in enumerate(texts_load_more):
+                try:
                     self.driver.execute_script("arguments[0].click();", t)
-                break
-            except StaleElementReferenceException as sere:
-                attempt += 1
-                continue
-
+                except StaleElementReferenceException as sere:
+                    print(f"stale {index}")
+                    continue
+            
     def start(self, page_name_or_id: str):
         target_url = self.base_url.format(page_name_or_id)
 
@@ -140,6 +141,7 @@ class FbPageDriverWorker(DriverWorker):
         len_post_less_than_5 = 1
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+
             TerminalLogging.log_info(f"{target_url} - {len(posts)} posts")
             if len(posts) <= 5:
                 len_post_less_than_5 += 1
@@ -148,21 +150,25 @@ class FbPageDriverWorker(DriverWorker):
             
             if len_post_less_than_5 % 100 == 0:
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
-            
+
             scroll_value = self._get_scroll_value()
             self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
             self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {scroll_value})""")
 
-        self._load_more_post_text()
+        self._load_more_post_text(perform=True)
         
         count_load_more = 0
         while (True):
             TerminalLogging.log_info(f"{target_url} - wait load more")
             count_load_more += 1
 
-            if count_load_more % 40 == 0:
+            if count_load_more % 24 == 0:
+                print(f"{page_name_or_id} need load more")
                 self._load_more_post_text()
-            if count_load_more >= 150:
+            if count_load_more > 400:
+                f = open("page_source.html", "w+")
+                f.write(self.driver.page_source)
+                f.close()
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
             
             if len(self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)) == 0:
