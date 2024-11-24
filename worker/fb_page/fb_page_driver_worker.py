@@ -108,9 +108,16 @@ class FbPageDriverWorker(DriverWorker):
         return False
 
     def _load_more_post_text(self):
-        texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
-        for t in texts_load_more:
-            self.driver.execute_script("arguments[0].click();", t)
+        attempt = 1
+        while (attempt <= 3):
+            try:
+                texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
+                for t in texts_load_more:
+                    self.driver.execute_script("arguments[0].click();", t)
+                break
+            except StaleElementReferenceException as sere:
+                attempt += 1
+                continue
 
     def start(self, page_name_or_id: str):
         target_url = self.base_url.format(page_name_or_id)
@@ -153,7 +160,7 @@ class FbPageDriverWorker(DriverWorker):
             TerminalLogging.log_info(f"{target_url} - wait load more")
             count_load_more += 1
 
-            if count_load_more == 80:
+            if count_load_more % 40 == 0:
                 self._load_more_post_text()
             if count_load_more >= 150:
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
