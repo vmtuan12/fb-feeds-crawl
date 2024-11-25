@@ -63,7 +63,7 @@ class ConsumerWorker():
                     break
                 
         except Exception as eee:
-            print(eee)
+            TerminalLogging.log_error(f"{page_name_or_id}\n{traceback.format_exc()}")
 
         TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type} {page_name_or_id}")
 

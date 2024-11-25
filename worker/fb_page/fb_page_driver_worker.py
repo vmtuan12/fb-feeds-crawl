@@ -138,6 +138,8 @@ class FbPageDriverWorker(DriverWorker):
         vscroller_el = """document.querySelector('[data-type="vscroller"]')"""
 
         len_post_less_than_5 = 1
+        post_not_change_count = 0
+        prev_post_len = 0
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
@@ -149,6 +151,14 @@ class FbPageDriverWorker(DriverWorker):
             
             if len_post_less_than_5 % 100 == 0:
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            
+            if len(posts) - prev_post_len == 0:
+                post_not_change_count += 1
+            else:
+                post_not_change_count = 0
+            if post_not_change_count >= 200:
+                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            prev_post_len = len(posts)
 
             scroll_value = self._get_scroll_value()
             self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
