@@ -1,5 +1,4 @@
 *.ipynb
-test*
 __pycache__/
 *.html
 proxies_dirs/
@@ -11,3 +10,5 @@ constants.py
 *.tar.gz
 *.zip
 chrome_profiles/
+*test*
+zip_and_send.sh
