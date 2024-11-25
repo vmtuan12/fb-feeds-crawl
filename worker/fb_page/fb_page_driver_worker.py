@@ -49,18 +49,44 @@ class FbPageDriverWorker(DriverWorker):
 
         super().__init__(driver)
 
+    def __find_post_time(self, p: WebElement) -> WebElement | None:
+        try:
+            post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
+            return post_time
+        except Exception as get_time_exc:
+            post_time = None
+
+        try:
+            post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME_ALTER)
+            return post_time
+        except Exception as get_time_exc:
+            post_time = None
+
+        return post_time
+
+    def __find_post_reactions(self, p: WebElement) -> WebElement | None:
+        try:
+            reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
+            return reactions
+        except Exception as get_react_exc:
+            reactions = None
+
+        try:
+            reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION_ALTER)
+            return reactions
+        except Exception as get_react_exc:
+            reactions = None
+
+        return reactions
+
     def _get_raw_post_dict(self, p: WebElement, now: datetime, page_name_or_id: str, has_no_img: bool = False) -> dict:
         try:
-            try:
-                post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME)
-            except Exception as get_time_exc:
-                post_time = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_POST_TIME_ALTER)
+            post_time = self.__find_post_time(p=p)
             # real_post_time_str = ParserUtils.approx_post_time_str(now=now, raw_post_time=post_time.get_attribute("innerHTML"))
+            reactions = self.__find_post_reactions(p=p)
 
-            try:
-                reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
-            except Exception as get_react_exc:
-                reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION_ALTER)
+            if post_time == None or reactions == None:
+                raise Exception("Post not valid")
 
             # reaction_count = ParserUtils.approx_reactions(reactions.get_attribute("innerHTML"))
 
@@ -109,15 +135,26 @@ class FbPageDriverWorker(DriverWorker):
 
         return False
 
-    def _load_more_post_text(self, perform=False):
+    def _load_more_post_text(self, perform=False, check_invalid=False):
         texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
         print(f"load more {len(texts_load_more)} posts")
+        if check_invalid:
+            for t in texts_load_more:
+                try:
+                    if (self.__find_post_reactions(t) != None) and (self.__find_post_time(t) != None):
+                        return True
+                except StaleElementReferenceException as sere:
+                    continue
+            return False
+            
         if perform:
             for index, t in enumerate(texts_load_more):
                 try:
                     self.driver.execute_script("arguments[0].click();", t)
                 except StaleElementReferenceException as sere:
                     continue
+
+        return True
             
     def start(self, page_name_or_id: str):
         target_url = self.base_url.format(page_name_or_id)
@@ -174,7 +211,13 @@ class FbPageDriverWorker(DriverWorker):
             if count_load_more % 24 == 0:
                 TerminalLogging.log_info(f"{page_name_or_id} need load more")
                 self._load_more_post_text()
-            if count_load_more > 400:
+
+            if count_load_more % 200 == 0:
+                keep_waiting = self._load_more_post_text(check_invalid=True)
+                if not keep_waiting:
+                    break
+
+            if count_load_more >= 400:
                 f = open("page_source.html", "w+")
                 f.write(self.driver.page_source)
                 f.close()
