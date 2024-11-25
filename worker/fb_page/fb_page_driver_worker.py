@@ -117,7 +117,6 @@ class FbPageDriverWorker(DriverWorker):
                 try:
                     self.driver.execute_script("arguments[0].click();", t)
                 except StaleElementReferenceException as sere:
-                    print(f"stale {index}")
                     continue
             
     def start(self, page_name_or_id: str):
@@ -163,7 +162,7 @@ class FbPageDriverWorker(DriverWorker):
             count_load_more += 1
 
             if count_load_more % 24 == 0:
-                print(f"{page_name_or_id} need load more")
+                TerminalLogging.log_info(f"{page_name_or_id} need load more")
                 self._load_more_post_text()
             if count_load_more > 400:
                 f = open("page_source.html", "w+")
@@ -197,8 +196,4 @@ class FbPageDriverWorker(DriverWorker):
                 break
             except StaleElementReferenceException as sere:
                 pass
-            # print(post_entity, "\n\n----####----####----####----####----####----####----####----####----####\n\n")
         self.kafka_producer.flush()
-
-        # with open(f'test/{page_name_or_id.replace(".", "_")}.json', "w") as f:
-        #     json.dump(data_list, f, ensure_ascii=False, indent=4)
