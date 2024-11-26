@@ -120,19 +120,30 @@ class FbPageDriverWorker(DriverWorker):
             return random.uniform(-200.0, -20.0)
         return random.uniform(-20.0, 500.0)
     
-    def _check_ready(self) -> bool:
+    def _check_ready(self, page: str) -> bool:
         attempt = 0
-        while (attempt <= 3):
+        while (attempt <= 50):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
             if len(posts) > 0:
                 return True
             attempt += 1
 
-            if ("login.php" in self.driver.current_url) or ("not found" in self.driver.title):
+            if self.driver.find_element_by_id(value="main-frame-error") != None:
+                TerminalLogging.log_info(f"Cannot reach page")
+                sleep(1)
+                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+
+            if ("login.php" in self.driver.current_url) or ("not found" in self.driver.title) or (self.driver.find_element_by_xpath(value="//span[text() = 'No Posts or Tags']") != None):
+                TerminalLogging.log_info(f"Page is dead")
+                self.kafka_producer.send(Kafka.TOPIC_DEAD_PAGES, {"page": page})
+                self.kafka_producer.flush()
                 raise PageCannotAccessException()
 
-            sleep(1)
-
+            sleep(0.5)
+        
+        f = open("not_ready.html", "w+")
+        f.write(self.driver.find_element_by_xpath(value="//html").get_attribute("outerHTML"))
+        f.close()
         return False
 
     def _load_more_post_text(self, perform=False, check_invalid=False):
@@ -166,9 +177,12 @@ class FbPageDriverWorker(DriverWorker):
         self.driver.get(target_url)
         TerminalLogging.log_info(f"Load {target_url} successfully")
 
-        page_is_ready = self._check_ready()
+        page_is_ready = self._check_ready(page=page_name_or_id)
         if not page_is_ready:
-            raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            TerminalLogging.log_info(f"Page {page_name_or_id} needs to be rechecked")
+            self.kafka_producer.send(Kafka.TOPIC_RECHECK_PAGES, {"page": page_name_or_id})
+            self.kafka_producer.flush()
+            raise PageNotReadyException(proxy_dir=self.proxy_dir, recheck=True)
         
         TerminalLogging.log_info(f"{target_url} is ready")
 
@@ -181,20 +195,20 @@ class FbPageDriverWorker(DriverWorker):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
             TerminalLogging.log_info(f"{target_url} - {len(posts)} posts")
-            if len(posts) <= 5:
-                len_post_less_than_5 += 1
-            if len(posts) >= self.min_post_count:
+            # if len(posts) <= 5:
+            #     len_post_less_than_5 += 1
+            if (len(posts) >= self.min_post_count) or (post_not_change_count >= 500):
                 break
             
-            if len_post_less_than_5 % 100 == 0:
-                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            # if len_post_less_than_5 % 300 == 0:
+            #     raise PageNotReadyException(proxy_dir=self.proxy_dir)
             
             if len(posts) - prev_post_len == 0:
                 post_not_change_count += 1
             else:
                 post_not_change_count = 0
-            if post_not_change_count >= 200:
-                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            # if post_not_change_count >= 500:
+            #     raise PageNotReadyException(proxy_dir=self.proxy_dir)
             prev_post_len = len(posts)
 
             scroll_value = self._get_scroll_value()
