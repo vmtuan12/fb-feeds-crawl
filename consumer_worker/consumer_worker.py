@@ -8,6 +8,8 @@ from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder
 from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
 from utils.command_utils import CommandType, CommandUtils
 from custom_logging.logging import TerminalLogging
+from selenium.common.exceptions import WebDriverException
+from urllib3.exceptions import ReadTimeoutError
 import subprocess
 
 class ConsumerWorker():
@@ -50,6 +52,8 @@ class ConsumerWorker():
                 except PageNotReadyException as pe:
                     page_not_ready_count += 1
                     proxy_is_working = ProxiesUtils.proxy_is_working(proxy_dir=pe.proxy_dir)
+                    if pe.recheck:
+                        break
                     if (not proxy_is_working) or (page_not_ready_count % 3 == 0):
                         delattr(self.thread_local_data, 'worker')
                         worker = None
@@ -57,6 +61,11 @@ class ConsumerWorker():
                     
                 except PageCannotAccessException as pcae:
                     break
+
+                except (WebDriverException, ReadTimeoutError) as wde:
+                    delattr(self.thread_local_data, 'worker')
+                    worker = None
+                    continue
 
                 except Exception as e:
                     TerminalLogging.log_error(traceback.format_exc())
