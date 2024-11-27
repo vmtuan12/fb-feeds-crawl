@@ -10,6 +10,7 @@ from utils.command_utils import CommandType, CommandUtils
 from custom_logging.logging import TerminalLogging
 from selenium.common.exceptions import WebDriverException
 from urllib3.exceptions import ReadTimeoutError
+from requests.exceptions import ConnectionError
 import subprocess
 
 class ConsumerWorker():
@@ -62,7 +63,7 @@ class ConsumerWorker():
                 except PageCannotAccessException as pcae:
                     break
 
-                except (WebDriverException, ReadTimeoutError) as wde:
+                except (WebDriverException, ReadTimeoutError, ConnectionError) as wde:
                     delattr(self.thread_local_data, 'worker')
                     worker = None
                     continue

@@ -36,6 +36,8 @@ class FbPageDriverWorker(DriverWorker):
             "user-data-dir": f"{SysConstant.USER_DATA_DIR}/{profile_name}",
             "profile-directory": "Default"
         })
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-sandbox")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
 
