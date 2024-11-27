@@ -1,4 +1,4 @@
-base_dir=/home/dev/fb/chrome_profiles
+base_dir="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"/chrome_profiles
 
 rm -rf "$base_dir"/*/DeferredBrowserMetrics/*
 rm -rf "$base_dir"/*/component_crx_cache/*
