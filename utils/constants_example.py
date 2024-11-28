@@ -7,6 +7,10 @@ class PostgresConnectionConstant():
     PWD = "tuanvm"
     DB = "tuanvm_db"
 
+class ProxyHandlerConnectionConstant():
+    HOST = "localhost"
+    PORT = 50051
+    
 class KafkaConnectionConstant():
     BROKERS = [
         "localhost:9091"

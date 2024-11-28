@@ -2,8 +2,14 @@ import os
 import secrets
 import requests
 import json
+import grpc
+from google.protobuf import json_format
+from google.protobuf.empty_pb2 import Empty
+import utils.grpc.proxy_msg_pb2 as proxy_msg_pb2
+import utils.grpc.proxy_msg_pb2_grpc as proxy_msg_pb2_grpc
 from utils.general_utils import GeneralUtils
 from custom_logging.logging import TerminalLogging
+from utils.constants import ProxyHandlerConnectionConstant
 
 class ProxiesUtils():
     BASE_PROXY_FOLDER = f"{os.getcwd()}/assets/proxies_dirs"
@@ -74,9 +80,30 @@ class ProxiesUtils():
 
     @classmethod
     def get_proxy_dir(cls) -> str:
-        list_proxies_dirs = os.listdir(cls.BASE_PROXY_FOLDER)
-        selection = secrets.choice(list_proxies_dirs)
-        return f"{cls.BASE_PROXY_FOLDER}/{selection}"
+        host, port = ProxyHandlerConnectionConstant.HOST, ProxyHandlerConnectionConstant.PORT
+        with grpc.insecure_channel(f'{host}:{port}') as channel:
+            stub = proxy_msg_pb2_grpc.ConsumerStub(channel)
+            response = stub.GetProxy(Empty())
+            json_res = json_format.MessageToDict(response)
+            proxy = json_res.get("proxy")
+
+        if proxy == None or proxy == "":
+            return None
+        
+        proxy_dir = f"{cls.BASE_PROXY_FOLDER}/{'_'.join(proxy.split(':'))}"
+        if not GeneralUtils.path_exist(proxy_dir):
+            cls.create_proxy_dir(proxy=proxy)
+
+        return proxy_dir
+
+    @classmethod
+    def finish_proxy(cls, proxy_dir: str):
+        proxy = ":".join((proxy_dir.split("/"))[-1].split("_"))
+        host, port = ProxyHandlerConnectionConstant.HOST, ProxyHandlerConnectionConstant.PORT
+
+        with grpc.insecure_channel(f'{host}:{port}') as channel:
+            stub = proxy_msg_pb2_grpc.ConsumerStub(channel)
+            response = stub.FinishProxy(proxy_msg_pb2.FinishProxyRequest(proxy=proxy))
 
     @classmethod
     def proxy_is_working(cls, proxy_dir: str) -> str:

@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package consumer;
+
+import "google/protobuf/empty.proto";
+
+service Consumer {
+  rpc GetProxy (google.protobuf.Empty) returns (ProxyResponse);
+  rpc FinishProxy (FinishProxyRequest) returns (google.protobuf.Empty);
+  rpc Ping (google.protobuf.Empty) returns (PingResponse);
+}
+
+message ProxyResponse {
+  string proxy = 1;
+}
+
+message FinishProxyRequest {
+  string proxy = 1;
+}
+
+message PingResponse {
+  int32 response_code = 1;
+  string message = 2;
+}

@@ -7,6 +7,7 @@ import traceback
 from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder
 from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
 from utils.command_utils import CommandType, CommandUtils
+from utils.proxies_utils import ProxiesUtils
 from custom_logging.logging import TerminalLogging
 from selenium.common.exceptions import WebDriverException
 from urllib3.exceptions import ReadTimeoutError
@@ -19,7 +20,7 @@ class ConsumerWorker():
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .build()
         self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
-                                                    .set_group_id("test")\
+                                                    .set_group_id(Kafka.GROUP_ID_MIDDLE_CONSUMER)\
                                                     .set_topics(Kafka.TOPIC_COMMAND)\
                                                     .build()
 
@@ -56,6 +57,7 @@ class ConsumerWorker():
                     if pe.recheck:
                         break
                     if (not proxy_is_working) or (page_not_ready_count % 3 == 0):
+                        ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
                         delattr(self.thread_local_data, 'worker')
                         worker = None
                         continue
@@ -64,6 +66,7 @@ class ConsumerWorker():
                     break
 
                 except (WebDriverException, ReadTimeoutError, ConnectionError) as wde:
+                    ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
                     delattr(self.thread_local_data, 'worker')
                     worker = None
                     continue
@@ -78,6 +81,7 @@ class ConsumerWorker():
         TerminalLogging.log_info(threading.current_thread().name + f" done {cmd_type} {page_name_or_id}")
 
     def start(self, max_workers: int = 1):
+        TerminalLogging.log_info("Start executing ...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
 
@@ -99,6 +103,7 @@ class ConsumerWorker():
                 else:
                     job = executor.submit(self.run_worker, page, cmd_type)
                     futures.append(job)
+                self.kafka_consumer.commit()
 
     def clean_up(self):
         self.kafka_producer.flush()
