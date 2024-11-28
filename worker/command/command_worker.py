@@ -65,9 +65,17 @@ class CommandWorker(BaseWorker):
 
             TerminalLogging.log_info(f"Command {scrape_msg}")
 
-            if index > 0 and (index % 10 == 0 or index == (len(list_pages) - 1)):
+            if index > 0 and (index % 50 == 0 or index == (len(list_pages) - 1)):
+                temp_partition = 0
                 clear_cache_msg = CommandEntity(cmd_type=CommandType.CLEAR_CACHE).to_dict()
                 TerminalLogging.log_info(f"Command {clear_cache_msg}")
+
+                while (True):
+                    try:
+                        self.kafka_producer.send(Kafka.TOPIC_COMMAND, value=clear_cache_msg, partition=temp_partition)
+                        temp_partition += 1
+                    except AssertionError as ae:
+                        break
                 
         self.kafka_producer.flush()
 
