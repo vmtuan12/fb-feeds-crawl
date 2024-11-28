@@ -48,6 +48,7 @@ class ConsumerWorker():
                         worker.start(page_name_or_id=page_name_or_id)
                     elif cmd_type == CommandType.CLEAR_CACHE:
                         worker._clear_cache()
+                        subprocess.run(f"{SysConstant.CLEAR_DATA_CHROME_SCRIPT}", shell=True)
 
                     break
 
@@ -91,19 +92,7 @@ class ConsumerWorker():
                 page = CommandUtils.get_page(command=command)
                 TerminalLogging.log_info(f"{cmd_type} {page}")
 
-                if cmd_type == CommandType.CLEAR_CACHE:
-                    subprocess.run(f"{SysConstant.CLEAR_DATA_CHROME_SCRIPT}", shell=True)
-                    for future in futures:
-                        future.result()
-                    
-                    futures.clear()
-                    for _ in range(max_workers):
-                        executor.submit(self.run_worker, page, cmd_type)
-
-                else:
-                    job = executor.submit(self.run_worker, page, cmd_type)
-                    futures.append(job)
-                self.kafka_consumer.commit()
+                executor.submit(self.run_worker, page, cmd_type)
 
     def clean_up(self):
         self.kafka_producer.flush()
