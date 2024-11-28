@@ -1,0 +1,15 @@
+version: '3.8'
+name: facebook
+services:
+  worker:
+    image: worker-fb-ubuntu:v0.3
+    init: true
+    environment:
+      KAFKA_BROKERS: "103.74.122.195:9091"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024M
+      mode: replicated
+      replicas: 10
