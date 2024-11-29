@@ -1,22 +1,30 @@
 import re
 from datetime import datetime, timedelta
+import html
 
 class ParserUtils():
     @classmethod
     def match_text_and_number(cls, text: str) -> str | None:
+        unescaped_text = html.unescape(text)
         pattern = r'[0-9a-zA-Z\.]+'
-        match = re.search(pattern, text)
+        match = re.search(pattern, unescaped_text)
         if match:
             return match.group()
         
         return None
     @classmethod
     def match_time(cls, text: str) -> str | None:
+        unescaped_text = html.unescape(text)
         pattern = r'[0-9a-zA-Z ,\.]+'
-        match = re.search(pattern, text)
-        if match:
-            return match.group().strip()
-        
+        matches = re.findall(pattern, unescaped_text)
+        if matches:
+            pos = -1
+            while (pos >= (len(matches) * (-1))):
+                res = matches[pos].strip()
+                if res != "":
+                    return res
+                pos -= 1
+
         return None
     
     @classmethod
@@ -50,6 +58,8 @@ class ParserUtils():
     @classmethod
     def approx_reactions(cls, raw_reactions: str) -> int:
         reactions = cls.match_text_and_number(raw_reactions)
+        if reactions == None or reactions == "":
+            return 0
         last_word = reactions[-1]
         if not ('0' <= last_word and last_word <= '9'):
             number_part = reactions[:-1].replace(",", ".")
