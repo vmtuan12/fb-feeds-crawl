@@ -40,7 +40,7 @@ class CommandWorker(BaseWorker):
         AND NOT (fp.categories && ARRAY['Nghệ sỹ', 'Diễn viên hài', 'Diễn viên', 'Cửa hàng nội thất', 'Cửa hàng quần áo sơ sinh & trẻ em', 'Người của công chúng'])
         AND pl.numlikes >= 10000
         ORDER BY pl.numlikes DESC
-        LIMIT 900) p1
+        LIMIT 800) p1
         UNION
         (SELECT po.username from fb.page_options po WHERE po.option = 'included');
         """)
@@ -65,7 +65,7 @@ class CommandWorker(BaseWorker):
 
             TerminalLogging.log_info(f"Command {scrape_msg}")
 
-            if index > 0 and (index % 50 == 0 or index == (len(list_pages) - 1)):
+            if index == (len(list_pages) - 1):
                 temp_partition = 0
                 clear_cache_msg = CommandEntity(cmd_type=CommandType.CLEAR_CACHE).to_dict()
                 TerminalLogging.log_info(f"Command {clear_cache_msg}")
