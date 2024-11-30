@@ -7,6 +7,7 @@ from time import sleep
 from threading import Thread
 from custom_logging.logging import TerminalLogging
 import traceback
+import hashlib
 
 class MiddleConsumer():
     def __init__(self) -> None:
@@ -23,6 +24,11 @@ class MiddleConsumer():
         soup = BeautifulSoup(text, 'html.parser')
         result = soup.text.strip().replace("\n", " ").replace("\t", " ")
         return result
+        
+    def __generate_id(self, text: str, page: str) -> str:
+        text_remove_space = ''.join([c for c in text if not c.isspace()]).lower()
+        union_text = text_remove_space + page
+        return hashlib.sha256(union_text.encode('utf-8')).hexdigest()
     
     def _flush(self):
         sleep(5)
@@ -31,6 +37,7 @@ class MiddleConsumer():
     def _parse_message(self, msg: dict) -> dict:
         now = datetime.strptime(msg["first_scraped_at"], "%Y-%m-%d %H:%M:%S")
         msg["text"] = self.__parse_text(msg["text"])
+        msg["id"] = self.__generate_id(text=msg["text"], page=msg["page"])
         msg["post_time"] = ParserUtils.approx_post_time_str(now=now, raw_post_time=msg["post_time"])
         msg["reaction_count"] = ParserUtils.approx_reactions(msg["reaction_count"])
         return msg
