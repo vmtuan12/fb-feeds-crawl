@@ -12,3 +12,4 @@ constants.py
 chrome_profiles/
 *test*
 zip_and_send.sh
+model/
