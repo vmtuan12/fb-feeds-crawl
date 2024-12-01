@@ -7,3 +7,7 @@ class PageNotReadyException(Exception):
 class PageCannotAccessException(Exception):
     def __init__(self, *args: object) -> None:
         super().__init__(*args)
+
+class KeywordsNotMatchedException(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
