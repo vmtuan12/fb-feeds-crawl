@@ -1,7 +1,9 @@
 import google.generativeai as genai
 import traceback
 import json
+import time
 from custom_exception.exceptions import KeywordsNotMatchedException
+from google.api_core.exceptions import ResourceExhausted
 
 class KeywordExtractionUtils():
     BASE_PROMPT = """
@@ -17,32 +19,37 @@ class KeywordExtractionUtils():
 
     @classmethod
     def enrich_keywords(cls, list_data: list[dict], api_key: str, model_name="gemini-1.5-flash") -> list:
-        list_text_str = ""
-        for item in list_data:
-            list_text_str += f"`{item.get('text')}`;\n"
+        while (True):
+            try:
+                list_text_str = ""
+                for item in list_data:
+                    list_text_str += f"`{item.get('text')}`;\n"
 
-        prompt = cls.BASE_PROMPT.format(list_text_str)
+                prompt = cls.BASE_PROMPT.format(list_text_str)
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(model_name)
 
-        try:
-            response = model.generate_content(prompt)
-        except Exception as e:
-            raise e
-        
-        result_str = response.text
-        list_keywords_by_post = json.loads(result_str.replace("```json", "").replace("```", "").replace("\n", ""))
+                response = model.generate_content(prompt)
+                
+                result_str = response.text
+                list_keywords_by_post = json.loads(result_str.replace("```json", "").replace("```", "").replace("\n", ""))
 
-        if len(list_data) != len(list_keywords_by_post):
-            raise KeywordsNotMatchedException()
-        
-        for index, item in enumerate(list_data):
-            keyword_list = [k.lower() for k in list_keywords_by_post[index].split(",")]
+                if len(list_data) != len(list_keywords_by_post):
+                    raise KeywordsNotMatchedException()
+                
+                for index, item in enumerate(list_data):
+                    keyword_list = [k.lower() for k in list_keywords_by_post[index].split(",")]
 
-            if keyword_list[0] not in item.get('text').lower():
-                raise KeywordsNotMatchedException()
+                    if keyword_list[0] not in item.get('text').lower():
+                        raise KeywordsNotMatchedException()
+                    
+                    item["keywords"] = keyword_list
+
+                return list_data
             
-            item["keywords"] = keyword_list
-
-        return list_data
+            except ResourceExhausted as re:            
+                time.sleep(1)
+                continue
+            except KeywordsNotMatchedException as ke:
+                continue
