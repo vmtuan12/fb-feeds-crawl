@@ -7,7 +7,7 @@ from datetime import datetime
 from time import sleep
 from threading import Thread
 from custom_logging.logging import TerminalLogging
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import traceback
 import hashlib
 
@@ -15,7 +15,7 @@ class ParserConsumer():
     def __init__(self) -> None:
         self.kafka_consumer = KafkaConsumerBuilder()\
                                 .set_brokers(Kafka.BROKERS)\
-                                .set_group_id(Kafka.GROUP_ID_PARSER)\
+                                .set_group_id("TEST101")\
                                 .set_auto_offset_reset("earliest")\
                                 .set_topics(Kafka.TOPIC_RAW_POST)\
                                 .build()
@@ -59,14 +59,19 @@ class ParserConsumer():
         msg["reaction_count"] = ParserUtils.approx_reactions(msg["reaction_count"])
         return msg
     
+    def _split_list(self, original_list: list, size: int) -> list:
+        return [original_list[i:i + size] for i in range(0, len(original_list), size)]
+    
     def _post_already_has_keywords(self, id: str) -> bool:
         # note: need implement
         return False
     
     def callback_enrich_keyword(self, res):
+        # result = res
         result = res.result()
         for item in result:
             self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=item)
+
     
     def start(self):
         Thread(target=self._flush).start()
@@ -76,9 +81,24 @@ class ParserConsumer():
         with ThreadPoolExecutor(max_workers=5) as thread_pool:
             while (True):
                 try:
-                    records = self.kafka_consumer.poll(max_records=10, timeout_ms=5000)
+                    records = self.kafka_consumer.poll(max_records=25, timeout_ms=5000)
                     if len(records.items()) == 0:
-                        pass
+                        if len(list_need_extract_keywords) > 0:
+                            sublists = self._split_list(list_need_extract_keywords.copy(), 5)
+                            futures = []
+                            for chunk in sublists:
+                                job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, 
+                                                        chunk, 
+                                                        self.api_keys[api_key_number])
+                                job.add_done_callback(self.callback_enrich_keyword)
+                                futures.append(job)
+
+                                list_need_extract_keywords.clear()
+                                api_key_number = (api_key_number + 1) if api_key_number < len(self.api_keys) - 1 else 0
+
+                            for future in as_completed(futures):
+                                pass
+
                     for topic_data, consumer_records in records.items():
                         for consumer_record in consumer_records:
                             raw_post = consumer_record.value
@@ -89,49 +109,36 @@ class ParserConsumer():
                             except Exception as e:
                                 TerminalLogging.log_error(message=f"Failed message at offset {consumer_record.offset} in partition {consumer_record.partition}")
                                 parsed_post["err"] = traceback.format_exc()
+                                parsed_post["partition"] = consumer_record.partition
+                                parsed_post["offset"] = consumer_record.offset
                                 self.kafka_producer.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
 
                             if self._post_already_has_keywords(id=parsed_post.get("id")):
                                 self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=parsed_post)
                                 TerminalLogging.log_info(message=f"Message at offset {consumer_record.offset} in partition {consumer_record.partition} has already had keywords. Send directly")
                             else:
+                                # TerminalLogging.log_info(message=f"Message at offset {consumer_record.offset} in partition {consumer_record.partition} has no keywords. Extract keyword and send")
                                 list_need_extract_keywords.append(parsed_post)
-                                if len(list_need_extract_keywords) >= 20:
-                                    job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, 
-                                                            list_need_extract_keywords.copy(), 
-                                                            self.api_keys[api_key_number])
-                                    job.add_done_callback(self.callback_enrich_keyword)
+                                if len(list_need_extract_keywords) >= 25:
+                                    sublists = self._split_list(list_need_extract_keywords.copy(), 5)
+                                    futures = []
+                                    for chunk in sublists:
+                                        job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, 
+                                                                chunk, 
+                                                                self.api_keys[api_key_number])
+                                        job.add_done_callback(self.callback_enrich_keyword)
+                                        futures.append(job)
 
-                                    list_need_extract_keywords.clear()
-                                    api_key_number = (api_key_number + 1) if api_key_number < len(self.api_keys) - 1 else 0
+                                        list_need_extract_keywords.clear()
+                                        api_key_number = (api_key_number + 1) if api_key_number < len(self.api_keys) - 1 else 0
+
+                                    for future in as_completed(futures):
+                                        pass
+
+                        # sleep(1000)
 
                 except Exception as e:
                     TerminalLogging.log_error(traceback.format_exc())
-
-            # for message in self.kafka_consumer:
-            #     raw_post = message.value
-            #     try:
-            #         parsed_post = self._parse_message(msg=raw_post)
-            #         if parsed_post.get("reaction_count") == None or parsed_post.get("post_time") == None:
-            #             continue
-            #     except Exception as e:
-            #         TerminalLogging.log_error(message=f"Failed message at offset {message.offset} in partition {message.partition}")
-            #         parsed_post["err"] = traceback.format_exc()
-            #         self.kafka_producer.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
-
-            #     if self._post_already_has_keywords(id=parsed_post.get("id")):
-            #         self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=parsed_post)
-            #         TerminalLogging.log_info(message=f"Message at offset {message.offset} in partition {message.partition} has already had keywords. Send directly")
-            #     else:
-            #         list_need_extract_keywords.append(parsed_post)
-            #         if len(list_need_extract_keywords) >= 20:
-            #             job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, 
-            #                                      list_need_extract_keywords.copy(), 
-            #                                      self.api_keys[api_key_number])
-            #             job.add_done_callback(self.callback_enrich_keyword)
-
-            #             list_need_extract_keywords.clear()
-            #             api_key_number = (api_key_number + 1) if api_key_number < len(self.api_keys) - 1 else 0
             
     def clean_up(self):
         self.kafka_producer.flush()
