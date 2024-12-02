@@ -3,6 +3,12 @@ from datetime import datetime, timedelta
 import html
 
 class ParserUtils():
+    RE_EMOJI = re.compile('[\U00010000-\U0010ffff]', flags=re.UNICODE)
+
+    @classmethod
+    def strip_emoji(cls, text: str) -> str:
+        return cls.RE_EMOJI.sub(r'', text)
+
     @classmethod
     def match_text_and_number(cls, text: str) -> str | None:
         unescaped_text = html.unescape(text)
