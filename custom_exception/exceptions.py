@@ -9,5 +9,6 @@ class PageCannotAccessException(Exception):
         super().__init__(*args)
 
 class KeywordsNotMatchedException(Exception):
-    def __init__(self, *args: object) -> None:
+    def __init__(self, msg: str = "", *args: object) -> None:
+        self.msg = msg
         super().__init__(*args)
