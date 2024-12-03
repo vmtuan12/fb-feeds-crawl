@@ -1,5 +1,5 @@
 from connectors.db_connector import KafkaConsumerBuilder, KafkaProducerBuilder
-from utils.constants import KafkaConnectionConstant as Kafka
+from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema
 from utils.keyword_extract_utils import KeywordExtractionUtils
 from utils.parser_utils import ParserUtils
 from bs4 import BeautifulSoup
@@ -15,12 +15,12 @@ class ParserConsumer():
     def __init__(self) -> None:
         self.kafka_consumer = KafkaConsumerBuilder()\
                                 .set_brokers(Kafka.BROKERS)\
-                                .set_group_id("TEST101")\
+                                .set_group_id("testest")\
                                 .set_auto_offset_reset("earliest")\
                                 .set_topics(Kafka.TOPIC_RAW_POST)\
-                                .build()
+                                .build()        
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
-                                                    .build()
+                                                    .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
         
         self.api_keys = [
             "AIzaSyBksEFncDgCSAHiqD2lnWIj_eVaMXkvwwg",
@@ -56,7 +56,11 @@ class ParserConsumer():
         msg["text"] = self.__parse_text(msg["text"])
         msg["id"] = self.__generate_id(text=msg["text"], page=msg["page"])
         msg["post_time"] = ParserUtils.approx_post_time_str(now=now, raw_post_time=msg["post_time"])
-        msg["reaction_count"] = ParserUtils.approx_reactions(msg["reaction_count"])
+        msg["update_time"] = [msg["first_scraped_at"]]
+        msg["reaction_count"] = [ParserUtils.approx_reactions(msg["reaction_count"])]
+
+        msg.pop('first_scraped_at')
+        msg.pop('last_updated_at')
         return msg
     
     def _split_list(self, original_list: list, size: int) -> list:

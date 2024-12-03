@@ -1,0 +1,15 @@
+{
+    "namespace": "fb.parsed_post",
+    "type": "record",
+    "name": "ParsedPost",
+    "fields": [
+        {"name": "id", "type": "string", "doc": "post id"},
+        {"name": "text", "type": "string", "doc": "post text"},
+        {"name": "post_time", "type": ["null", "string"], "doc": "post time"},
+        {"name": "page", "type": "string", "doc": "page name"},
+        {"name": "images", "type": ["null", {"type": "array", "items": "string"}], "doc": "array of image URLs"},
+        {"name": "keywords", "type": ["null", {"type": "array", "items": "string"}], "doc": "keywords"},
+        {"name": "reaction_count", "type": ["null", {"type": "array", "items": "int"}], "doc": "array of reaction count"},
+        {"name": "update_time", "type": ["null", {"type": "array", "items": "string"}], "doc": "array of update time"}
+    ]
+}
