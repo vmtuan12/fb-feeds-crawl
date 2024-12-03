@@ -4,6 +4,8 @@ import json
 import io
 import avro.schema
 from avro.io import DatumWriter, BinaryEncoder, BinaryDecoder, DatumReader
+import redis
+from elasticsearch import Elasticsearch
 
 class DbConnector():
     def __init__(self, host: str, port: int, 
@@ -40,6 +42,7 @@ class DbConnectorBuilder():
         self.db_name = None
         self.username = None
         self.password = None
+        self.token = None
 
     def set_host(self, host: str):
         self.host = host
@@ -60,6 +63,10 @@ class DbConnectorBuilder():
     def set_password(self, password: str):
         self.password = password
         return self
+
+    def set_token(self, token: str):
+        self.token = token
+        return self
     
     def build_pg(self):
         return psycopg2.connect(
@@ -70,6 +77,28 @@ class DbConnectorBuilder():
             database=self.db_name,
             connect_timeout=10
         )
+    
+    def build_redis(self):
+        return redis.Redis(
+            host=self.host,
+            port=self.port,
+            username=self.username,
+            password=self.password,
+            decode_responses=True
+        )
+    
+    def build_es_client(self):
+        address = f"http://{self.host}:{self.port}"
+        if self.token != None:
+            return Elasticsearch(
+                address,
+                api_key=self.token
+            )
+        else:
+            return Elasticsearch(
+                address,
+                basic_auth=(self.username, self.password)
+            )
 
 class KafkaConsumerBuilder():
     def __init__(self):
