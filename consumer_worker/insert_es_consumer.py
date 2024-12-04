@@ -1,4 +1,4 @@
-from connectors.db_connector import KafkaConsumerBuilder, DbConnectorBuilder
+from connectors.db_connector import KafkaConsumerBuilder, KafkaProducerBuilder, DbConnectorBuilder
 from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema, ElasticsearchConnectionConstant as ES
 from utils.keyword_extract_utils import KeywordExtractionUtils
 from elasticsearch import helpers
@@ -23,12 +23,25 @@ class ConsumerWorker():
                                                 .set_username(ES.USERNAME)\
                                                 .set_password(ES.PASSWORD)\
                                                 .build_es_client()
+        self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .build()
         
     def _create_document_index(self, document: dict) -> dict:
+        formatted_doc = {
+            "text": document["text"],
+            "page": document["page"],
+            "images": document["images"],
+            "reaction_count": document["reaction_count"],
+            "post_time": datetime.strptime(document["post_time"], "%Y%m%d %H:%M:%S"),
+            "update_time": [datetime.strptime(t, "%Y%m%d %H:%M:%S") for t in document["update_time"]],
+            "keywords": document["keywords"]
+        }
+        _index = f'fb_post-{document["post_time"].split(" ")[0]}'
+
         return {
             "_op_type": 'update',
-            "_index": 'test-3',
-            "_id": "aaaa",
+            "_index": _index,
+            "_id": f"{document['id']}",
             "script": {
                 "source": """
                     if (ctx._source.text == null) {
@@ -60,33 +73,50 @@ class ConsumerWorker():
                         ctx._source.update_time.addAll(params.update_time);
                     }
                 """,
-                "params": {
-                    "text": document["text"],
-                    "page": document["page"],
-                    "images": document["images"],
-                    "reaction_count": document["reaction_count"],
-                    "post_time": document["post_time"],
-                    "update_time": document["update_time"],
-                    "keywords": document["keywords"]
-                }
+                "params": formatted_doc
             },
-            "upsert": {
-                "text": document["text"],
-                "page": document["page"],
-                "images": document["images"],
-                "reaction_count": document["reaction_count"],
-                "post_time": document["post_time"],
-                "update_time": document["update_time"],
-                "keywords": document["keywords"]
-            }
+            "upsert": formatted_doc
         }
     
     def _insert(self, rows: list):
+        if len(rows) == 0:
+            return
+        
+        indexed_docs = [self._create_document_index(document=r) for r in rows]
         try:
-            helpers.bulk(self.es_client, rows)
+            helpers.bulk(self.es_client, indexed_docs)
         except Exception as e:
-            pass
+            _trace_back = traceback.format_exc()
+            TerminalLogging.log_error(_trace_back)
+            for r in rows:
+                r["error"] = _trace_back
+                self.kafka_producer.send(Kafka.TOPIC_FAILED_INSERT_ES, r)
+            self.kafka_producer.close()
 
-    def start():
-        # note: need to implement
-        pass
+    def start(self, max_records=100):
+        post_list = []
+
+        while (True):
+            records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
+            if len(records.items()) == 0:
+                self._insert(rows=post_list.copy())
+                post_list.clear()
+
+            for topic_data, consumer_records in records.items():
+                for consumer_record in consumer_records:
+                    parsed_post = consumer_record.value
+                    post_list.append(parsed_post)
+
+            if len(post_list) >= 500:
+                self._insert(rows=post_list.copy())
+                post_list.clear()
+
+    def clean_up(self):
+        self.es_client.close()
+        self.kafka_consumer.close(autocommit=False)
+
+    def __del__(self):
+        self.clean_up()
+    
+    def __delete__(self):
+        self.clean_up()
