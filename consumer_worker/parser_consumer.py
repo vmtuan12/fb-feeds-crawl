@@ -1,5 +1,5 @@
-from connectors.db_connector import KafkaConsumerBuilder, KafkaProducerBuilder
-from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema
+from connectors.db_connector import KafkaConsumerBuilder, KafkaProducerBuilder, DbConnectorBuilder
+from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema, RedisConnectionConstant as RedisCons
 from utils.keyword_extract_utils import KeywordExtractionUtils
 from utils.parser_utils import ParserUtils
 from bs4 import BeautifulSoup
@@ -22,20 +22,11 @@ class ParserConsumer():
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
         
-        self.api_keys = [
-            "AIzaSyBksEFncDgCSAHiqD2lnWIj_eVaMXkvwwg",
-            "AIzaSyC12tc0ZSPeikNIuo5_hHnL1NOJRCT4QVo",
-            "AIzaSyC8Ih3TaWJ25Wj7Fw0GiCBqmEnXqUdI1fE",
-            "AIzaSyBAjXoxTSoaGf2PH4upsneVRxkst_Tq0WY",
-            "AIzaSyAWTaGQMr4ufeakTQUfuv70n0mzHBcSMOs",
-            "AIzaSyDktty6N2PngkPILMMO1WwAO_ponRU7MqI",
-            "AIzaSyCUBRmd0pqeM358g6L0eM5M2QVPRnqKjLE",
-            "AIzaSyBG0fPW2-WRT4NPiXZiLIgJn2lsdBCjaX0",
-            "AIzaSyBXcdj4af0k5-piXYux1NjI46vgy4A9GTQ",
-            "AIzaSyDpZq0WYZyc20havT8awUCyJJ8EPuVCzG0",
-            "AIzaSyD9vQwUa0pgrfuJBrIUKvVeMr50UGz7L7I",
-            "AIzaSyBV7lCA5AH0vPG1Z9D6oC1FXlzGDz2F4GU"
-        ]
+        self.redis_conn = DbConnectorBuilder().set_host(RedisCons.HOST)\
+                                                .set_port(RedisCons.PORT)\
+                                                .set_username(RedisCons.USERNAME)\
+                                                .set_password(RedisCons.PASSWORD)\
+                                                .build_redis()
         
     def __parse_text(self, text: str) -> str:
         soup = BeautifulSoup(text, 'html.parser')
@@ -66,9 +57,44 @@ class ParserConsumer():
     def _split_list(self, original_list: list, size: int) -> list:
         return [original_list[i:i + size] for i in range(0, len(original_list), size)]
     
-    def _post_already_has_keywords(self, id: str) -> bool:
-        # note: need implement
-        return False
+    def _list_posts_have_and_not_have_keywords(self, list_posts: list[dict]) -> tuple:
+        dict_post_by_id = dict()
+        for p in list_posts:
+            dict_post_by_id[p.get("id")] = p
+
+        list_ids = list[dict_post_by_id.keys()]
+        pipeline = self.redis_conn.pipeline()
+        for _id in list_ids:
+            key = f'{RedisCons.PREFIX_POST_ID}.{_id}'
+            pipeline.get(key)
+        values = pipeline.execute()
+        pipeline.close()
+
+        list_have_keywords = []
+        list_not_have_keywords = []
+
+        result = {key: value for key, value in zip(list_ids, values)}
+        for k in result.keys():
+            if result.get(k) != None:
+                list_have_keywords.append(dict_post_by_id.get(k))
+            else:
+                list_not_have_keywords.append(dict_post_by_id.get(k))
+
+        return list_have_keywords, list_not_have_keywords
+    
+    def _extract_keywords(self, list_need_extract_keywords: list, chunk_size: int):
+        with ThreadPoolExecutor(max_workers=5) as thread_pool:
+            sublists = self._split_list(list_need_extract_keywords.copy(), chunk_size)
+            futures = []
+            for chunk in sublists:
+                job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, chunk)
+                job.add_done_callback(self.callback_enrich_keyword)
+                futures.append(job)
+
+            for future in as_completed(futures):
+                pass
+        
+        list_need_extract_keywords.clear()
     
     def callback_enrich_keyword(self, res):
         # result = res
@@ -87,18 +113,10 @@ class ParserConsumer():
                     records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
                     if len(records.items()) == 0:
                         if len(list_need_extract_keywords) > 0:
-                            sublists = self._split_list(list_need_extract_keywords.copy(), chunk_size)
-                            futures = []
-                            for chunk in sublists:
-                                job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, chunk)
-                                job.add_done_callback(self.callback_enrich_keyword)
-                                futures.append(job)
-
-                                list_need_extract_keywords.clear()
-
-                            for future in as_completed(futures):
-                                pass
-
+                            self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
+                                                   chunk_size=chunk_size)
+                    
+                    temp_parsed_posts = []
                     for topic_data, consumer_records in records.items():
                         for consumer_record in consumer_records:
                             raw_post = consumer_record.value
@@ -106,6 +124,7 @@ class ParserConsumer():
                                 parsed_post = self._parse_message(msg=raw_post)
                                 if parsed_post.get("reaction_count") == None or parsed_post.get("post_time") == None:
                                     continue
+                                temp_parsed_posts.append(parsed_post)
                             except Exception as e:
                                 TerminalLogging.log_error(message=f"Failed message at offset {consumer_record.offset} in partition {consumer_record.partition}")
                                 parsed_post["err"] = traceback.format_exc()
@@ -113,25 +132,16 @@ class ParserConsumer():
                                 parsed_post["offset"] = consumer_record.offset
                                 self.kafka_producer.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
 
-                            if self._post_already_has_keywords(id=parsed_post.get("id")):
-                                self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=parsed_post)
-                                TerminalLogging.log_info(message=f"Message at offset {consumer_record.offset} in partition {consumer_record.partition} has already had keywords. Send directly")
-                            else:
-                                # TerminalLogging.log_info(message=f"Message at offset {consumer_record.offset} in partition {consumer_record.partition} has no keywords. Extract keyword and send")
-                                list_need_extract_keywords.append(parsed_post)
+                    posts_have_keywords, posts_not_have_keywords = self._list_posts_have_and_not_have_keywords(list_posts=temp_parsed_posts.copy())
+                    for p in posts_have_keywords:
+                        self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=p)
+                        
+                    list_need_extract_keywords += posts_not_have_keywords
+                    temp_parsed_posts.clear()
 
                     if len(list_need_extract_keywords) >= max_records * 2:
-                        sublists = self._split_list(list_need_extract_keywords.copy(), chunk_size)
-                        futures = []
-                        for chunk in sublists:
-                            job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, chunk)
-                            job.add_done_callback(self.callback_enrich_keyword)
-                            futures.append(job)
-
-                            list_need_extract_keywords.clear()
-
-                        for future in as_completed(futures):
-                            pass
+                        self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
+                                                chunk_size=chunk_size)
 
                         # sleep(1000)
 
@@ -142,6 +152,7 @@ class ParserConsumer():
         self.kafka_producer.flush()
         self.kafka_producer.close(timeout=5)
         self.kafka_consumer.close(autocommit=False)
+        self.redis_conn.close()
 
     def __del__(self):
         self.clean_up()
