@@ -67,10 +67,11 @@ class KeywordExtractionUtils():
                 
                 # print(dict_keywords_by_post.keys(), post_by_id_dict.keys())
                 for key in dict_keywords_by_post.keys():
-                    if dict_keywords_by_post.get(key) == None:
-                        dict_keywords_by_post[key] = ""
-                    keyword_list = [k.strip().replace(".", "").lower() for k in dict_keywords_by_post[key].split(",")]
-                    post_by_id_dict[key]["keywords"] = keyword_list
+                    if dict_keywords_by_post.get(key) == None or dict_keywords_by_post.get(key) == "":
+                        post_by_id_dict[key]["keywords"] = []
+                    else:
+                        keyword_list = [k.strip().replace(".", "").lower() for k in dict_keywords_by_post[key].split(",")]
+                        post_by_id_dict[key]["keywords"] = keyword_list
 
                 TerminalLogging.log_info(f"Done extracting keywords")
 
