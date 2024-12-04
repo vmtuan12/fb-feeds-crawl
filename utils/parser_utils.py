@@ -28,7 +28,8 @@ class ParserUtils():
     @classmethod
     def approx_post_time_str(cls, now: datetime, raw_post_time: str) -> str | None:
         post_time_matches = cls.match_time(raw_post_time)
-        for post_time in post_time_matches:
+        for pt in post_time_matches:
+            post_time = pt.strip()
             try:
                 if post_time.startswith("Jus"):
                     return now.strftime("%Y-%m-%d %H:%M:%S")

@@ -51,7 +51,11 @@ class KeywordExtractionUtils():
                 response = requests.post(url=API.MODEL_API, data=json.dumps(body))
                 
                 # result_str = json.loads(response.text).get("data")
-                dict_keywords_by_post = json.loads(response.text).get("data")
+                try:
+                    dict_keywords_by_post = json.loads(response.text).get("data")
+                except Exception as e:
+                    raise json.decoder.JSONDecodeError()
+
                 if dict_keywords_by_post == None:
                     raise KeyError()
 

@@ -21,6 +21,8 @@ class ParserConsumer():
                                 .build()
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
+        self.kafka_producer_fail_msg = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .build()
         
         self.redis_conn = DbConnectorBuilder().set_host(RedisCons.HOST)\
                                                 .set_port(RedisCons.PORT)\
@@ -130,7 +132,8 @@ class ParserConsumer():
                                 parsed_post["err"] = traceback.format_exc()
                                 parsed_post["partition"] = consumer_record.partition
                                 parsed_post["offset"] = consumer_record.offset
-                                self.kafka_producer.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
+                                self.kafka_producer_fail_msg.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
+                                self.kafka_producer_fail_msg.flush()
 
                     posts_have_keywords, posts_not_have_keywords = self._list_posts_have_and_not_have_keywords(list_posts=temp_parsed_posts.copy())
                     for p in posts_have_keywords:
@@ -151,6 +154,8 @@ class ParserConsumer():
     def clean_up(self):
         self.kafka_producer.flush()
         self.kafka_producer.close(timeout=5)
+        self.kafka_producer_fail_msg.flush()
+        self.kafka_producer_fail_msg.close(timeout=5)
         self.kafka_consumer.close(autocommit=False)
         self.redis_conn.close()
 
