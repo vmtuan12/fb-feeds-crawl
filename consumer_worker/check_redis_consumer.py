@@ -22,7 +22,29 @@ class ConsumerWorker():
                                                 .set_username(RedisCons.USERNAME)\
                                                 .set_password(RedisCons.PASSWORD)\
                                                 .build_redis()
-        
     
-    def start():
+    def _insert_recent_id(self, docs: list[dict], ttl=7200):
+        list_keys = set()
+        for d in docs:
+            key = f'{RedisCons.PREFIX_POST_ID}.{d.get("id")}'
+            list_keys.add(key)
+
+        value = ""
+        pipeline = self.redis_conn.pipeline()
+        for key in list_keys:
+            pipeline.set(key, value, ex=ttl)
+        pipeline.execute()
+        pipeline.close()
+
+    def start(self):
         pass
+
+    def clean_up(self):
+        self.kafka_consumer.close(autocommit=False)
+        self.redis_conn.close()
+
+    def __del__(self):
+        self.clean_up()
+    
+    def __delete__(self):
+        self.clean_up()
