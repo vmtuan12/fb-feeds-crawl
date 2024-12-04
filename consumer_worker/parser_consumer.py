@@ -109,47 +109,46 @@ class ParserConsumer():
         Thread(target=self._flush).start()
         list_need_extract_keywords = []
 
-        with ThreadPoolExecutor(max_workers=5) as thread_pool:
-            while (True):
-                try:
-                    records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
-                    if len(records.items()) == 0:
-                        if len(list_need_extract_keywords) > 0:
-                            self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
-                                                   chunk_size=chunk_size)
-                    
-                    temp_parsed_posts = []
-                    for topic_data, consumer_records in records.items():
-                        for consumer_record in consumer_records:
-                            raw_post = consumer_record.value
-                            try:
-                                parsed_post = self._parse_message(msg=raw_post)
-                                if parsed_post.get("reaction_count") == None or parsed_post.get("post_time") == None:
-                                    continue
-                                temp_parsed_posts.append(parsed_post)
-                            except Exception as e:
-                                TerminalLogging.log_error(message=f"Failed message at offset {consumer_record.offset} in partition {consumer_record.partition}")
-                                parsed_post["err"] = traceback.format_exc()
-                                parsed_post["partition"] = consumer_record.partition
-                                parsed_post["offset"] = consumer_record.offset
-                                self.kafka_producer_fail_msg.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
-                                self.kafka_producer_fail_msg.flush()
-
-                    posts_have_keywords, posts_not_have_keywords = self._list_posts_have_and_not_have_keywords(list_posts=temp_parsed_posts.copy())
-                    for p in posts_have_keywords:
-                        self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=p)
-                        
-                    list_need_extract_keywords += posts_not_have_keywords
-                    temp_parsed_posts.clear()
-
-                    if len(list_need_extract_keywords) >= max_records:
+        while (True):
+            try:
+                records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
+                if len(records.items()) == 0:
+                    if len(list_need_extract_keywords) > 0:
                         self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
                                                 chunk_size=chunk_size)
+                
+                temp_parsed_posts = []
+                for topic_data, consumer_records in records.items():
+                    for consumer_record in consumer_records:
+                        raw_post = consumer_record.value
+                        try:
+                            parsed_post = self._parse_message(msg=raw_post)
+                            if parsed_post.get("reaction_count") == None or parsed_post.get("post_time") == None:
+                                continue
+                            temp_parsed_posts.append(parsed_post)
+                        except Exception as e:
+                            TerminalLogging.log_error(message=f"Failed message at offset {consumer_record.offset} in partition {consumer_record.partition}")
+                            parsed_post["err"] = traceback.format_exc()
+                            parsed_post["partition"] = consumer_record.partition
+                            parsed_post["offset"] = consumer_record.offset
+                            self.kafka_producer_fail_msg.send(Kafka.TOPIC_FAILED_PARSED_POST, value=parsed_post)
+                            self.kafka_producer_fail_msg.flush()
 
-                        # sleep(1000)
+                posts_have_keywords, posts_not_have_keywords = self._list_posts_have_and_not_have_keywords(list_posts=temp_parsed_posts.copy())
+                for p in posts_have_keywords:
+                    self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=p)
+                    
+                list_need_extract_keywords += posts_not_have_keywords
+                temp_parsed_posts.clear()
 
-                except Exception as e:
-                    TerminalLogging.log_error(traceback.format_exc())
+                if len(list_need_extract_keywords) >= max_records:
+                    self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
+                                            chunk_size=chunk_size)
+
+                    # sleep(1000)
+
+            except Exception as e:
+                TerminalLogging.log_error(traceback.format_exc())
             
     def clean_up(self):
         self.kafka_producer.flush()
