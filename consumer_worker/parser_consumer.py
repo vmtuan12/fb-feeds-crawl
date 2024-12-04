@@ -18,7 +18,7 @@ class ParserConsumer():
                                 .set_group_id("testest")\
                                 .set_auto_offset_reset("earliest")\
                                 .set_topics(Kafka.TOPIC_RAW_POST)\
-                                .build()        
+                                .build()
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
         
@@ -77,28 +77,24 @@ class ParserConsumer():
             self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=item)
 
     
-    def start(self):
+    def start(self, max_records=100, chunk_size=50):
         Thread(target=self._flush).start()
         list_need_extract_keywords = []
-        api_key_number = 0
 
         with ThreadPoolExecutor(max_workers=5) as thread_pool:
             while (True):
                 try:
-                    records = self.kafka_consumer.poll(max_records=25, timeout_ms=5000)
+                    records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
                     if len(records.items()) == 0:
                         if len(list_need_extract_keywords) > 0:
-                            sublists = self._split_list(list_need_extract_keywords.copy(), 5)
+                            sublists = self._split_list(list_need_extract_keywords.copy(), chunk_size)
                             futures = []
                             for chunk in sublists:
-                                job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, 
-                                                        chunk, 
-                                                        self.api_keys[api_key_number])
+                                job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, chunk)
                                 job.add_done_callback(self.callback_enrich_keyword)
                                 futures.append(job)
 
                                 list_need_extract_keywords.clear()
-                                api_key_number = (api_key_number + 1) if api_key_number < len(self.api_keys) - 1 else 0
 
                             for future in as_completed(futures):
                                 pass
@@ -123,21 +119,19 @@ class ParserConsumer():
                             else:
                                 # TerminalLogging.log_info(message=f"Message at offset {consumer_record.offset} in partition {consumer_record.partition} has no keywords. Extract keyword and send")
                                 list_need_extract_keywords.append(parsed_post)
-                                if len(list_need_extract_keywords) >= 25:
-                                    sublists = self._split_list(list_need_extract_keywords.copy(), 5)
-                                    futures = []
-                                    for chunk in sublists:
-                                        job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, 
-                                                                chunk, 
-                                                                self.api_keys[api_key_number])
-                                        job.add_done_callback(self.callback_enrich_keyword)
-                                        futures.append(job)
 
-                                        list_need_extract_keywords.clear()
-                                        api_key_number = (api_key_number + 1) if api_key_number < len(self.api_keys) - 1 else 0
+                    if len(list_need_extract_keywords) >= max_records * 2:
+                        sublists = self._split_list(list_need_extract_keywords.copy(), chunk_size)
+                        futures = []
+                        for chunk in sublists:
+                            job = thread_pool.submit(KeywordExtractionUtils.enrich_keywords, chunk)
+                            job.add_done_callback(self.callback_enrich_keyword)
+                            futures.append(job)
 
-                                    for future in as_completed(futures):
-                                        pass
+                            list_need_extract_keywords.clear()
+
+                        for future in as_completed(futures):
+                            pass
 
                         # sleep(1000)
 
