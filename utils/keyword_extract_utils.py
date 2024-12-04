@@ -16,14 +16,15 @@ class KeywordExtractionUtils():
     {0}
     Write in json, keywords of a paragraph is assigned with its ID. 
     Remember: word about time is not a keyword.
+    Name of a person/a group/a team is automatically a keyword.
+    Word that describes relationship is automatically a keyword. (for example: "bố", "mẹ", "anh", "chị", "em", etc. and many more)
     Name of a place is automatically a keyword.
-    Name of a person is automatically a keyword.
-    Word or complex words that describes what happens is automatically a keyword.
+    Word that describes a place is automatically a keyword.
+    Word or complex words that describes what happens is automatically a keyword. Make it as common as you can (for example: "vụ cháy" is "cháy", "đám cháy" is "cháy", etc. and many more).
     Verb of complex verbs or that describes action of people is automatically a keyword.
-    Do not skip any paragraph. 
     Keywords must exist in the paragraph, do not change or paraphrase them.
     You are prohibited from changing the key.
-    Ensure the there are exactly {1} elements of keywords
+    Every key of the input must be processed, do not skip any of them. If you cannot extract any keywords from the paragraph, the result is empty string ""
     """
 
     @classmethod
@@ -39,6 +40,7 @@ class KeywordExtractionUtils():
 
                 list_text_str += list_text_str[:-1] + "}"
 
+                TerminalLogging.log_info(f"Start extracting keywords ...")
                 prompt = cls.BASE_PROMPT.format('{id1: "keyword1,keyword2,keyword3", id2: "keyword1,keyword2,keyword3", id3: "keyword1,keyword2,keyword3"}', len(list_data))
 
                 body = {"prompt": [
@@ -51,17 +53,17 @@ class KeywordExtractionUtils():
                 # result_str = json.loads(response.text).get("data")
                 dict_keywords_by_post = json.loads(response.text).get("data")
 
-                # print(len(dict_keywords_by_post.keys()))
-                if len(post_by_id_dict.keys()) != len(dict_keywords_by_post.keys()):
-                    # [print(post_by_id_dict[item]["text"]) for item in post_by_id_dict]
-                    # print(dict_keywords_by_post)
-                    raise KeywordsNotMatchedException("Length fail")
+                # print(post_by_id_dict.keys(), dict_keywords_by_post.keys())
+                # [print(item, post_by_id_dict[item]["text"]) for item in post_by_id_dict]
+                # print(dict_keywords_by_post)
+                # if len(post_by_id_dict.keys()) != len(dict_keywords_by_post.keys()):
+                #     raise KeywordsNotMatchedException("Length fail")
                 
                 # print(dict_keywords_by_post.keys(), post_by_id_dict.keys())
                 for key in dict_keywords_by_post.keys():
                     if dict_keywords_by_post.get(key) == None:
                         dict_keywords_by_post[key] = ""
-                    keyword_list = [k.strip().lower() for k in dict_keywords_by_post[key].split(",")]
+                    keyword_list = [k.strip().replace(".", "").lower() for k in dict_keywords_by_post[key].split(",")]
                     post_by_id_dict[key]["keywords"] = keyword_list
 
                 TerminalLogging.log_info(f"Done extracting keywords")

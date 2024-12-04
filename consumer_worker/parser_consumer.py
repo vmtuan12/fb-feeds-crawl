@@ -15,7 +15,7 @@ class ParserConsumer():
     def __init__(self) -> None:
         self.kafka_consumer = KafkaConsumerBuilder()\
                                 .set_brokers(Kafka.BROKERS)\
-                                .set_group_id("testest")\
+                                .set_group_id(Kafka.GROUP_ID_PARSER)\
                                 .set_auto_offset_reset("earliest")\
                                 .set_topics(Kafka.TOPIC_RAW_POST)\
                                 .build()
@@ -62,7 +62,7 @@ class ParserConsumer():
         for p in list_posts:
             dict_post_by_id[p.get("id")] = p
 
-        list_ids = list[dict_post_by_id.keys()]
+        list_ids = list(dict_post_by_id.keys())
         pipeline = self.redis_conn.pipeline()
         for _id in list_ids:
             key = f'{RedisCons.PREFIX_POST_ID}.{_id}'
@@ -103,7 +103,7 @@ class ParserConsumer():
             self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=item)
 
     
-    def start(self, max_records=100, chunk_size=50):
+    def start(self, max_records=100, chunk_size=25):
         Thread(target=self._flush).start()
         list_need_extract_keywords = []
 
@@ -139,7 +139,7 @@ class ParserConsumer():
                     list_need_extract_keywords += posts_not_have_keywords
                     temp_parsed_posts.clear()
 
-                    if len(list_need_extract_keywords) >= max_records * 2:
+                    if len(list_need_extract_keywords) >= max_records:
                         self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
                                                 chunk_size=chunk_size)
 
