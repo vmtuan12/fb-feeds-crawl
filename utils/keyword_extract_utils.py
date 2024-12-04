@@ -41,7 +41,7 @@ class KeywordExtractionUtils():
                 list_text_str += list_text_str[:-1] + "}"
 
                 TerminalLogging.log_info(f"Start extracting keywords ...")
-                prompt = cls.BASE_PROMPT.format('{id1: "keyword1,keyword2,keyword3", id2: "keyword1,keyword2,keyword3", id3: "keyword1,keyword2,keyword3"}', len(list_data))
+                prompt = cls.BASE_PROMPT.format('{id1: "keyword1,keyword2,keyword3", id2: "keyword1,keyword2,keyword3", id3: "keyword1,keyword2,keyword3"}')
 
                 body = {"prompt": [
                     {'role': 'system', 'content': prompt},
@@ -52,6 +52,8 @@ class KeywordExtractionUtils():
                 
                 # result_str = json.loads(response.text).get("data")
                 dict_keywords_by_post = json.loads(response.text).get("data")
+                if dict_keywords_by_post == None:
+                    raise KeyError()
 
                 # print(post_by_id_dict.keys(), dict_keywords_by_post.keys())
                 # [print(item, post_by_id_dict[item]["text"]) for item in post_by_id_dict]
