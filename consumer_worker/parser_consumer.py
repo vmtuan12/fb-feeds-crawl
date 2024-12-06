@@ -8,6 +8,7 @@ from time import sleep
 from threading import Thread
 from custom_logging.logging import TerminalLogging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from unidecode import unidecode
 import traceback
 import hashlib
 
@@ -37,7 +38,7 @@ class ParserConsumer():
         
     def __generate_id(self, text: str, page: str) -> str:
         text_remove_space = ''.join([c for c in text if not c.isspace()]).lower()
-        union_text = text_remove_space + page
+        union_text = unidecode(text_remove_space + page)
         return hashlib.sha256(union_text.encode('utf-8')).hexdigest()
     
     def _flush(self):
@@ -102,7 +103,10 @@ class ParserConsumer():
         # result = res
         result = res.result()
         for item in result:
-            self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=item)
+            try:
+                self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=item)
+            except Exception as e:
+                TerminalLogging.log_error(traceback.format_exc())
 
     
     def start(self, max_records=100, chunk_size=25):
@@ -135,6 +139,7 @@ class ParserConsumer():
                             self.kafka_producer_fail_msg.flush()
 
                 posts_have_keywords, posts_not_have_keywords = self._list_posts_have_and_not_have_keywords(list_posts=temp_parsed_posts.copy())
+                TerminalLogging.log_info(f"{len(posts_have_keywords)} posts have keywords, {len(posts_not_have_keywords)} posts dont have keywords")
                 for p in posts_have_keywords:
                     self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=p)
                     
