@@ -23,7 +23,7 @@ class InsertESConsumer():
         
     def _create_document_index(self, document: dict) -> dict:
         time_format = "%Y-%m-%d %H:%M:%S"
-        current_year = datetime.now().year
+        current_time = datetime.now()
 
         formatted_doc = {
             "text": document["text"],
@@ -34,7 +34,7 @@ class InsertESConsumer():
             "update_time": [datetime.strptime(t, time_format) for t in document["update_time"]],
             "keywords": document["keywords"]
         }
-        if formatted_doc.get("post_time").year < current_year:
+        if (current_time - formatted_doc.get("post_time")).days > 30:
             return None
         
         _index = f'fb_post-{document["post_time"].split(" ")[0]}'
