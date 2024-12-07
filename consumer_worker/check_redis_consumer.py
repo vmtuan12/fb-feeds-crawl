@@ -35,10 +35,11 @@ class CheckRedisConsumer():
             for keyword in d.get("keywords"):
                 if keyword == "":
                     continue
-                if dict_keyword_post.get(keyword) == None:
-                    dict_keyword_post[keyword] = [post_id]
+                keyword_post_time = f'{d["post_time"].split(" ")[0]}.{keyword}'
+                if dict_keyword_post.get(keyword_post_time) == None:
+                    dict_keyword_post[keyword_post_time] = [post_id]
                 else:
-                    dict_keyword_post[keyword].append(post_id)
+                    dict_keyword_post[keyword_post_time].append(post_id)
  
         try:
             value = ""
