@@ -1,11 +1,9 @@
-import google.generativeai as genai
 import traceback
 import requests
 import json
 import time
 from utils.parser_utils import ParserUtils
 from custom_exception.exceptions import KeywordsNotMatchedException
-from google.api_core.exceptions import ResourceExhausted
 from custom_logging.logging import TerminalLogging
 from utils.constants import APIConstant as API
 
@@ -54,18 +52,13 @@ class KeywordExtractionUtils():
                 try:
                     dict_keywords_by_post = json.loads(response.text).get("data")
                 except Exception as e:
-                    raise json.decoder.JSONDecodeError()
+                    TerminalLogging.log_error(response.text)
+                    raise json.decoder.JSONDecodeError(msg="Cannot decode")
 
                 if dict_keywords_by_post == None:
-                    raise KeyError()
+                    TerminalLogging.log_error(response.text)
+                    raise json.decoder.JSONDecodeError(msg="Keyword dict is None")
 
-                # print(post_by_id_dict.keys(), dict_keywords_by_post.keys())
-                # [print(item, post_by_id_dict[item]["text"]) for item in post_by_id_dict]
-                # print(dict_keywords_by_post)
-                # if len(post_by_id_dict.keys()) != len(dict_keywords_by_post.keys()):
-                #     raise KeywordsNotMatchedException("Length fail")
-                
-                # print(dict_keywords_by_post.keys(), post_by_id_dict.keys())
                 for key in dict_keywords_by_post.keys():
                     if dict_keywords_by_post.get(key) == None or dict_keywords_by_post.get(key) == "":
                         post_by_id_dict[key]["keywords"] = []
@@ -81,5 +74,6 @@ class KeywordExtractionUtils():
                 TerminalLogging.log_error(f"{ke.msg}. Retrying...")
                 continue
             except (json.decoder.JSONDecodeError, KeyError) as ge:
+                TerminalLogging.log_error(traceback.format_exc())
                 TerminalLogging.log_error(f"Model returns wrong format/data")
                 continue
