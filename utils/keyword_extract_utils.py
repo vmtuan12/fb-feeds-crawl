@@ -63,7 +63,7 @@ class KeywordExtractionUtils():
                     if dict_keywords_by_post.get(key) == None or dict_keywords_by_post.get(key) == "":
                         post_by_id_dict[key]["keywords"] = []
                     else:
-                        keyword_list = [k.strip().replace(".", "").lower() for k in dict_keywords_by_post[key].split(",")]
+                        keyword_list = [k.strip().replace(".", "").replace('"', '').replace("'", "").lower() for k in dict_keywords_by_post[key].split(",")]
                         post_by_id_dict[key]["keywords"] = keyword_list
 
                 TerminalLogging.log_info(f"Done extracting keywords")

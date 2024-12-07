@@ -4,7 +4,8 @@ from datetime import datetime
 from custom_logging.logging import TerminalLogging
 import traceback
 from time import sleep
- 
+import os
+
 class CheckRedisConsumer():
     def __init__(self) -> None:
         self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
@@ -17,8 +18,10 @@ class CheckRedisConsumer():
                                                 .set_username(RedisCons.USERNAME)\
                                                 .set_password(RedisCons.PASSWORD)\
                                                 .build_redis()
+        self.ttl_keyword = int(os.getenv("TTL_KEYWORD", "21600"))
+        self.ttl_id = int(os.getenv("TTL_ID", "7200"))
     
-    def _process_recent_docs(self, docs: list[dict], ttl_id=7200, ttl_keyword=86400):
+    def _process_recent_docs(self, docs: list[dict], ttl_id=7200, ttl_keyword=21600):
         current_time = datetime.now()
         list_keys = set()
         dict_keyword_post = dict()
@@ -68,7 +71,7 @@ class CheckRedisConsumer():
             records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=20000)
             TerminalLogging.log_info(f"Polled {len(records.items())} items!")
             if len(records.items()) == 0:
-                self._process_recent_docs(docs=post_list.copy())
+                self._process_recent_docs(docs=post_list.copy(), ttl_id=self.ttl_id, ttl_keyword=self.ttl_keyword)
                 post_list.clear()
  
             for topic_data, consumer_records in records.items():
@@ -78,7 +81,7 @@ class CheckRedisConsumer():
                     post_list.append(parsed_post)
  
             if len(post_list) >= 50:
-                self._process_recent_docs(docs=post_list.copy())
+                self._process_recent_docs(docs=post_list.copy(), ttl_id=self.ttl_id, ttl_keyword=self.ttl_keyword)
                 post_list.clear()
  
     def clean_up(self):
