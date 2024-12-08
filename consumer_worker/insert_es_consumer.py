@@ -59,9 +59,11 @@ class InsertESConsumer():
                     }
                     if (ctx._source.keywords == null || ctx._source.keywords.length == 0) {
                         ctx._source.keywords = params.keywords;
-                    }
-                    if (ctx._source.keywords == null || ctx._source.keywords.length == 0) {
-                        ctx._source.keywords = params.keywords;
+                    } else {
+                        if (params.keywords != null && params.keywords.length != 0) {
+                            ctx._source.keywords.addAll(params.keywords);
+                            ctx._source.keywords = ctx._source.keywords.stream().distinct().collect(Collectors.toList());
+                        }
                     }
                     if (ctx._source.reaction_count == null || ctx._source.reaction_count.length == 0) {
                         ctx._source.reaction_count = params.reaction_count;

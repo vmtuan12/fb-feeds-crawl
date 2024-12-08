@@ -32,7 +32,7 @@ class CheckRedisConsumer():
             post_time = datetime.strptime(d["post_time"], "%Y-%m-%d %H:%M:%S")
             list_keys.add(f'{RedisCons.PREFIX_POST_ID}.{post_id}')
  
-            if (current_time - post_time).days > 7 or (d.get("keywords") == None):
+            if (current_time - post_time).days > 2 or (d.get("keywords") == None):
                 continue
  
             for keyword in d.get("keywords"):
