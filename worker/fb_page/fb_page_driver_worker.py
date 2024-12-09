@@ -11,7 +11,7 @@ from custom_logging.logging import TerminalLogging
 from connectors.db_connector import KafkaProducerBuilder
 from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
 from kafka import KafkaProducer
-from time import sleep
+from time import sleep, time
 import random
 import pytz
 from datetime import datetime
@@ -193,13 +193,14 @@ class FbPageDriverWorker(DriverWorker):
         len_post_less_than_5 = 1
         post_not_change_count = 0
         prev_post_len = 0
+        start_time = time()
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
 
             TerminalLogging.log_info(f"{target_url} - {len(posts)} posts")
             # if len(posts) <= 5:
             #     len_post_less_than_5 += 1
-            if (len(posts) >= self.min_post_count) or (post_not_change_count >= 500):
+            if (len(posts) >= self.min_post_count) or (post_not_change_count >= 500) or (time() - start_time) > 300:
                 break
             
             # if len_post_less_than_5 % 300 == 0:
