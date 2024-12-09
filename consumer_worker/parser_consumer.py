@@ -146,7 +146,7 @@ class ParserConsumer():
                 list_need_extract_keywords += posts_not_have_keywords
                 temp_parsed_posts.clear()
 
-                if len(list_need_extract_keywords) >= max_records:
+                if len(list_need_extract_keywords) >= chunk_size:
                     self._extract_keywords(list_need_extract_keywords=list_need_extract_keywords,
                                             chunk_size=chunk_size)
 
