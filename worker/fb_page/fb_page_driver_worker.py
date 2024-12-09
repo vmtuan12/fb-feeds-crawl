@@ -135,7 +135,7 @@ class FbPageDriverWorker(DriverWorker):
                 sleep(1)
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
 
-            if ("login.php" in self.driver.current_url) or ("not found" in self.driver.title) or (self.driver.find_element_by_xpath(value="//span[text() = 'No Posts or Tags']") != None):
+            if ("login" in self.driver.current_url) or ("not found" in self.driver.title) or (self.driver.find_element_by_xpath(value="//span[text() = 'No Posts or Tags']") != None):
                 TerminalLogging.log_info(f"Page is dead")
                 self.kafka_producer.send(Kafka.TOPIC_DEAD_PAGES, {"page": page})
                 self.kafka_producer.flush()
