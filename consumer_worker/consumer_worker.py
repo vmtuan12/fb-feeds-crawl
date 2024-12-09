@@ -53,15 +53,10 @@ class ConsumerWorker():
                     break
 
                 except PageNotReadyException as pe:
-                    page_not_ready_count += 1
-                    proxy_is_working = ProxiesUtils.proxy_is_working(proxy_dir=pe.proxy_dir)
-                    if pe.recheck:
-                        break
-                    if (not proxy_is_working) or (page_not_ready_count % 3 == 0):
-                        ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
-                        delattr(self.thread_local_data, 'worker')
-                        worker = None
-                        continue
+                    ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
+                    delattr(self.thread_local_data, 'worker')
+                    worker = None
+                    continue
                     
                 except PageCannotAccessException as pcae:
                     break
