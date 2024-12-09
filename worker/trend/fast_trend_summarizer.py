@@ -106,17 +106,25 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         es_search_res = self.es_client.msearch(body=msearch_body)
         for sk, r in zip(list_set_keywords, es_search_res['responses']):
             list_texts = []
+            set_images = set()
             for doc in r['hits']['hits']:
                 _source = doc.get("_source")
                 keywords = set(_source.get("keywords"))
+                images = _source.get("images")
                 text = _source.get("text")
+
                 if len(sk) <= 2:
                     if len(keywords.intersection(sk)) == len(sk):
                         list_texts.append(text)
+                        if images != None:
+                            set_images.update(set(images))
                 elif len(keywords.intersection(sk)) >= math.ceil(len(sk)/3):
                     list_texts.append(text)
+                    if images != None:
+                        set_images.update(set(images))
 
             print(sk)
+            print(", ".join(set_images))
             self._summarize_texts(list_text=list_texts)
             print("##################################################")
 
