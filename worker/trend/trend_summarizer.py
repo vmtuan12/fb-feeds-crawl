@@ -69,18 +69,17 @@ class TrendSummarizerWorker(BaseWorker):
 
         return node_list
     
-    def _summarize_texts(self, list_text: list):
+    def _summarize_texts(self, list_text: list) -> dict:
         prompt = """Given a list of texts. You are an experienced writer. Summarize given texts into 1 or 2 short paragraphs, then create a interesting title. Everything is written in Vietnamese.
-        The answer must be json-formatted, with the format {"title": <the title you have written>, "text": <the content you have summarized>}"""
+        The answer must be json-formatted, with the format {"title": <the title you have written>, "content": <the content you have summarized>}"""
         body = {"prompt": [
             {'role': 'system', 'content': prompt},
             {'role': 'user', 'content': f'{str(list_text)}'}
         ], "json_output": True}
 
         response = requests.post(url=API.MODEL_API, data=json.dumps(body))
-        # result = json.loads(response.text).get("data")
-        print(response.text)
-        # result = json.loads(response.text)
+        result = json.loads(response.text).get("data")
+        return result
     
     def start(self):
         pass

@@ -73,3 +73,11 @@ class KeywordNode():
     
     def add_relevant_node(self, other_node: 'KeywordNode'):
         self.relevant_nodes.add(other_node)
+
+class FastTrendEntity(BaseEntity):
+    def __init__(self, title: str, content: str, images: list[str], keywords: list[str], update_time: str):
+        self.title = title
+        self.content = content
+        self.images = images
+        self.keywords = keywords
+        self.update_time = update_time

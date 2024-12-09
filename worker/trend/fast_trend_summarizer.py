@@ -1,9 +1,10 @@
 from worker.trend.trend_summarizer import TrendSummarizerWorker
-from connectors.db_connector import KafkaConsumerBuilder, DbConnectorBuilder
-from utils.constants import ElasticsearchConnectionConstant as ES, RedisConnectionConstant as RedisCons
+from connectors.db_connector import DbConnectorBuilder
+from utils.constants import ElasticsearchConnectionConstant as ES, RedisConnectionConstant as RedisCons, PostgresConnectionConstant as PgCons
+from utils.insert_pg_utils import InsertPgUtils
 from datetime import datetime, timedelta
 from custom_logging.logging import TerminalLogging
-from entities.entities import KeywordNode
+from entities.entities import FastTrendEntity
 import pytz
 import math
 
@@ -14,6 +15,12 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
                                                 .set_username(RedisCons.USERNAME)\
                                                 .set_password(RedisCons.PASSWORD)\
                                                 .build_redis()
+        self.pg_conn = DbConnectorBuilder().set_host(PgCons.HOST)\
+                                            .set_port(PgCons.PORT)\
+                                            .set_username(PgCons.USER)\
+                                            .set_password(PgCons.PWD)\
+                                            .set_db_name(PgCons.DB)\
+                                            .build_pg()
         self.es_client = DbConnectorBuilder().set_host(ES.HOST)\
                                                 .set_port(ES.PORT)\
                                                 .set_username(ES.USERNAME)\
@@ -71,6 +78,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
                 filtered_keys.append(keyword)
                 
         keyword_nodes_list = self.compute_keyword_nodes(list_keywords=filtered_keys, dict_keyword_posts=dict_keyword_posts)
+        TerminalLogging.log_info(f"Computed {len(keyword_nodes_list)} nodes!")
         list_grouping = []
         for node in keyword_nodes_list:
             if len(node.relevant_nodes) == 0:
@@ -100,10 +108,12 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         msearch_body = []
         list_set_keywords = []
         for g in list_grouping:
+            TerminalLogging.log_info(f"Keywords {g['set_keywords']}")
             list_set_keywords.append(g["set_keywords"])
             self._append_search_body(msearch_body=msearch_body, id_list=list(g["posts"]), current_date=current_date)
         
         es_search_res = self.es_client.msearch(body=msearch_body)
+        list_trends = []
         for sk, r in zip(list_set_keywords, es_search_res['responses']):
             list_texts = []
             set_images = set()
@@ -123,16 +133,26 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
                     if images != None:
                         set_images.update(set(images))
 
-            print(sk)
-            print(", ".join(set_images))
-            self._summarize_texts(list_text=list_texts)
-            print("##################################################")
+            TerminalLogging.log_info(f"Keywords {sk}")
+            content_dict = self._summarize_texts(list_text=list_texts)
+            sum_trend = FastTrendEntity(title=content_dict.get("title"),
+                                        content=content_dict.get("content"),
+                                        images=list(set_images),
+                                        keywords=list(sk),
+                                        update_time=now.strftime("%Y-%m-%d %H:%M:%S"))
+            list_trends.append(sum_trend.to_dict())
+
+        insert_statement = "INSERT INTO fb.fast_trends (%s) VALUES %s"
+        query_insert, value_insert = InsertPgUtils.generate_query_insert_list_dict(insert_statement=insert_statement, data_list=list_trends)
+        self.pg_conn.cursor().execute(query_insert, value_insert)
+        self.pg_conn.commit()
 
         self.clean_up()
     
     def clean_up(self):
         self.redis_conn.close()
         self.es_client.close()
+        self.pg_conn.close()
  
     def __del__(self):
         self.clean_up()
