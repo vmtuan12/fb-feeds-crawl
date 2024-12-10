@@ -108,10 +108,11 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         msearch_body = []
         list_set_keywords = []
         for g in list_grouping:
-            TerminalLogging.log_info(f"Keywords {g['set_keywords']}")
             list_set_keywords.append(g["set_keywords"])
+            if len(g["posts"]) == 0:
+                continue
             self._append_search_body(msearch_body=msearch_body, id_list=list(g["posts"]), current_date=current_date)
-        
+
         es_search_res = self.es_client.msearch(body=msearch_body)
         list_trends = []
         for sk, r in zip(list_set_keywords, es_search_res['responses']):
@@ -119,6 +120,8 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
             set_images = set()
             for doc in r['hits']['hits']:
                 _source = doc.get("_source")
+                if _source.get("keywords") == None:
+                    continue
                 keywords = set(_source.get("keywords"))
                 images = _source.get("images")
                 text = _source.get("text")
@@ -135,6 +138,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
 
             TerminalLogging.log_info(f"Keywords {sk}")
             content_dict = self._summarize_texts(list_text=list_texts)
+            TerminalLogging.log_info(f"{content_dict}")
             sum_trend = FastTrendEntity(title=content_dict.get("title"),
                                         content=content_dict.get("content"),
                                         images=list(set_images),
