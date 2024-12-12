@@ -4,10 +4,25 @@ import html
 
 class ParserUtils():
     RE_EMOJI = re.compile('[\U00010000-\U0010ffff]', flags=re.UNICODE)
+    RE_HASHTAG = re.compile("#\w*", flags=re.UNICODE)
+    RE_URL = r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&\/\/=]*)'
+    RE_SPECIAL_CHARS = r'[\.\,\!\@\#\$\%\^\&\*\(\)\=\|\"\'\;\:\‘\’\“\”]'
+
+    @classmethod
+    def strip_hashtag(cls, text: str) -> str:
+        return cls.RE_HASHTAG.sub(r'', text)
 
     @classmethod
     def strip_emoji(cls, text: str) -> str:
         return cls.RE_EMOJI.sub(r'', text)
+
+    @classmethod
+    def strip_url(cls, text: str) -> str:
+        return re.sub(cls.RE_URL, '', text)
+
+    @classmethod
+    def strip_special_chars(cls, text: str) -> str:
+        return re.sub(cls.RE_SPECIAL_CHARS, '', text)
 
     @classmethod
     def match_text_and_number(cls, text: str) -> str | None:
