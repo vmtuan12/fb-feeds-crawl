@@ -9,7 +9,10 @@ import requests
 import json
 
 class TrendSummarizerWorker(BaseWorker):
-    def _match_acronym(self, longer_text: str, shorter_text: str):
+    def _match_acronym(self, longer_text: str, shorter_text: str) -> bool:
+        if longer_text.replace(" ", "") == shorter_text.replace(" ", ""):
+            return True
+        
         acronym = ""
         for word in longer_text.split(" "):
             acronym += word[0]
@@ -47,9 +50,9 @@ class TrendSummarizerWorker(BaseWorker):
                     continue
                 
                 k2_posts = dict_keyword_posts.get(keyword2)
-                if ((keyword1 in keyword2) and (abs(len(k1_posts) - len(k2_posts)) < 10)) or \
-                    self._match_acronym(longer_text=keyword2, shorter_text=keyword1):
-                    
+                # if ((keyword1 in keyword2) and (len(keyword1.split(" ")) * 2 >= len(keyword2.split(" "))) and (abs(len(k1_posts) - len(k2_posts)) < 10)) or \
+                #     self._match_acronym(longer_text=keyword2, shorter_text=keyword1):
+                if self._match_acronym(longer_text=keyword2, shorter_text=keyword1):
                     dict_found[keyword2] = k2_posts
 
             if len(dict_found.keys()) == 0:
@@ -71,6 +74,7 @@ class TrendSummarizerWorker(BaseWorker):
     
     def _summarize_texts(self, list_text: list) -> dict:
         prompt = """Given a list of texts. You are an experienced writer. Summarize given texts into 1 or 2 short paragraphs, then create a interesting title. Everything is written in Vietnamese.
+        If there is a irrelevant text, do not summarize it.
         The answer must be json-formatted, with the format {"title": <the title you have written>, "content": <the content you have summarized>}"""
         body = {"prompt": [
             {'role': 'system', 'content': prompt},
