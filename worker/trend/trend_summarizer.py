@@ -29,7 +29,7 @@ class TrendSummarizerWorker(BaseWorker):
     
     def _add_node(self, node_list: list[KeywordNode], node: KeywordNode):
         for other_node in node_list:
-            if node.similar_in_posts(other_node=other_node):
+            if node.similar_in_post_ids(other_node=other_node):
                 node.add_relevant_node(other_node=other_node)
 
         node_list.append(node)

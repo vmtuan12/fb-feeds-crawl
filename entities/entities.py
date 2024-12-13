@@ -57,12 +57,13 @@ class RawPostEntityBuilder(Builder):
         return RawPostEntity(text=self.text, images=self.images, reaction_count=self.reaction_count, post_time=self.post_time)
     
 class KeywordNode():
-    def __init__(self, keywords: set, post_ids: set) -> None:
+    def __init__(self, keywords: set, post_ids: set, post_texts: set = None) -> None:
         self.keywords = keywords
         self.post_ids = post_ids
+        self.post_texts = post_texts
         self.relevant_nodes = set()
 
-    def similar_in_posts(self, other_node: 'KeywordNode'):
+    def similar_in_post_ids(self, other_node: 'KeywordNode'):
         if len(other_node.keywords) == 1 and len(other_node.keywords.intersection(self.keywords)) > 0:
             return False
         
