@@ -55,12 +55,12 @@ class TrendDetector():
         post_text = post.get("text")
         post_images = post.get("images")
         post_keywords = post.get("keywords")
-        set_keywords = set(post_keywords) if post_keywords != None else set()
+        list_keywords = post_keywords if post_keywords != None else []
         post_dict = {
             "id": post_id,
             "text": post_text,
             "images": post_images,
-            "keywords": set_keywords
+            "keywords": list_keywords
         }
         self.clustered_posts.add(post_id)
 
@@ -102,7 +102,7 @@ class TrendDetector():
                 # note: produce to kafka
                 pass
         else:
-            if len(set_keywords) == 0:
+            if len(list_keywords) == 0:
                 return
             self._create_new_cluster(post=post_dict)
 
