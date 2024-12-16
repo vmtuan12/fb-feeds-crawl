@@ -76,6 +76,12 @@ class PostCluster(BaseEntity):
 
     def add_sub_cluster(self, new_sub_cluster_id: int):
         self.sub_clusters.add(new_sub_cluster_id)
+
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["keywords"] = list(result["keywords"])
+        result["sub_clusters"] = list(result["sub_clusters"])
+        return result
     
 class KeywordNode():
     def __init__(self, keywords: set, post_ids: set = None, post_texts_dict: dict = None, node_id: int = None) -> None:
