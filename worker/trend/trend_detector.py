@@ -22,6 +22,7 @@ class TrendDetector():
         
         self.clustered_posts = set()
         self.posts_clusters = dict()
+        self.detected_clusters = dict()
         self.current_index = 0
         self.cosine_threshold = float(os.getenv("COSINE_THRESHOLD", "0.45"))
         self.merge_clusters_threshold = int(os.getenv("MERGE_CLUSTERS_THRESHOLD", "200"))
@@ -49,6 +50,10 @@ class TrendDetector():
         self.posts_clusters.update({self.current_index: cl})
         self.current_index += 1
         return cl
+    
+    def _detect_cluster(self, cluster_id: int, post_len: int):
+        # note: produce to kafka
+        self.detected_clusters[cluster_id] = post_len
         
     def cluster_post(self, post: dict):
         post_id = post.get("id")
@@ -98,9 +103,10 @@ class TrendDetector():
 
         if doc_belong_to_a_node:
             self.posts_clusters[cluster_with_max_cosine].add_post(post_dict)
-            if len(self.posts_clusters[cluster_with_max_cosine].posts.keys()) % 3 == 0:
-                # note: produce to kafka
-                pass
+            cluster_with_max_cosine_post_len = len(self.posts_clusters[cluster_with_max_cosine].posts.keys())
+            if cluster_with_max_cosine_post_len % 3 == 0:
+                self._detect_cluster(cluster_id=cluster_with_max_cosine, post_len=cluster_with_max_cosine_post_len)
+
         else:
             if len(list_keywords) == 0:
                 return
@@ -160,6 +166,21 @@ class TrendDetector():
 
         self.posts_clusters = merged_graph
         TerminalLogging.log_info(f"Done merging clusters")
+
+        detected_cluster_ids = set(self.detected_clusters.keys())
+        for cluster in self.posts_clusters.values():
+            cluster_id = cluster.id
+            set_cluster_and_subs = cluster.sub_clusters.union({cluster_id})
+            if len(cluster.posts.keys()) >= 3:
+                current_cluster_posts_len = len(self.posts_clusters[cluster_id].posts.keys())
+                cluster_intersection = set_cluster_and_subs.intersection(detected_cluster_ids)
+
+                if len(cluster_intersection) == 0:
+                    self._detect_cluster(cluster_id=cluster_id, post_len=current_cluster_posts_len)
+                else:
+                    count_detected_posts = sum([self.detected_clusters[cid] for cid in cluster_intersection])
+                    if current_cluster_posts_len - count_detected_posts >= 3:
+                        self._detect_cluster(cluster_id=cluster_id, post_len=current_cluster_posts_len)
 
     def save_cluster_checkpoint(self):
         pass
