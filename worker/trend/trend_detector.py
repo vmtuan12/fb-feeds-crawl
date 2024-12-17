@@ -26,6 +26,7 @@ class TrendDetector():
         self.current_index = 0
         self.cosine_threshold = float(os.getenv("COSINE_THRESHOLD", "0.45"))
         self.merge_clusters_threshold = int(os.getenv("MERGE_CLUSTERS_THRESHOLD", "200"))
+        self.post_time_sec_threshold = int(os.getenv("POST_TIME_SEC_THRESHOLD", "30600"))
 
         self.start_time = self._get_current_time()
 
@@ -39,6 +40,8 @@ class TrendDetector():
             (12 <= self.start_time.hour and self.start_time.hour <= 17 and current_time.hour >= 18) or \
             (18 <= self.start_time.hour and self.start_time.hour <= 22 and current_time.hour >= 23):
 
+            if self.start_time.hour <= 7 or self.start_time.hour >= 23:
+                self.clustered_posts.clear()
             self.start_time = current_time
             return True
         
@@ -57,6 +60,14 @@ class TrendDetector():
         self.kafka_producer.send(Kafka.TOPIC_RISING_TRENDS, cluster.posts)
         self.kafka_producer.flush()
         self.detected_clusters[cluster_id] = post_len
+
+    def _detect_high_reaction(self, post: dict):
+        reaction_count = post.get("reaction_count")
+        if reaction_count != None and len(reaction_count) > 0:
+            reaction_int = reaction_count[0]
+        if reaction_int >= 1000:
+            self.kafka_producer.send(Kafka.TOPIC_HIGH_REACTION_POSTS, post)
+            self.kafka_producer.flush()
         
     def cluster_post(self, post: dict) -> int:
         current_time = self._get_current_time()
@@ -66,21 +77,25 @@ class TrendDetector():
         post_text = post.get("text")
         post_images = post.get("images")
         post_keywords = post.get("keywords")
+        post_reaction = post.get("reaction_count")
         list_keywords = post_keywords if post_keywords != None else []
         post_dict = {
             "id": post_id,
             "text": post_text,
             "images": post_images,
+            "reaction_count": post_reaction,
             "keywords": list_keywords
         }
+
+        if (current_time - post_time).seconds >= self.post_time_sec_threshold:
+            TerminalLogging.log_info(f"Id {post_id} has invalid post time. Skipped.")
+            return 0
+        
+        self._detect_high_reaction(post=post_dict)
         if post_id in self.clustered_posts:
             return 0
         
         self.clustered_posts.add(post_id)
-
-        if (current_time - post_time).days >= 1:
-            TerminalLogging.log_info(f"Id {post_id} has invalid post time. Skipped.")
-            return 0
 
         if "See more" in post_text or post_text.count(" ") < 9:
             TerminalLogging.log_info(f"Id {post_id} has invalid text. Skipped.")
