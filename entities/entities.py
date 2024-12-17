@@ -74,8 +74,9 @@ class PostCluster(BaseEntity):
             return
         self.keywords.update(new_keywords)
 
-    def add_sub_cluster(self, new_sub_cluster_id: int):
-        self.sub_clusters.add(new_sub_cluster_id)
+    def add_sub_cluster(self, other_cluster: 'PostCluster'):
+        self.sub_clusters.add(other_cluster.id)
+        self.sub_clusters.update(other_cluster.sub_clusters)
 
     def to_dict(self) -> dict:
         result = super().to_dict()
