@@ -5,6 +5,7 @@ from utils.insert_pg_utils import InsertPgUtils
 from datetime import datetime, timedelta
 from custom_logging.logging import TerminalLogging
 from entities.entities import FastTrendEntity
+from utils.graph_utils import GraphUtils
 import pytz
 import math
 
@@ -72,38 +73,107 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
             dict_keyword_posts[k.split(".")[-1]] = s
 
         filtered_keys = []
+        filtered_keys_with_posts = dict()
         for k in keyword_keys:
             keyword = k.split(".")[-1]
             if len(dict_keyword_posts[keyword]) > 5:
-                filtered_keys.append(keyword)
-                
+                # filtered_keys.append(keyword)
+                filtered_keys_with_posts[keyword] = dict_keyword_posts[keyword]
+        
+        selected_keywords = set(filtered_keys_with_posts.keys())
+        TerminalLogging.log_info(len(selected_keywords))
+        msearch_body = []
+        # s = 0
+        for key in selected_keywords:
+            self._append_search_body(msearch_body=msearch_body, id_list=list(filtered_keys_with_posts.get(key)), current_date=current_date)
+
+        TerminalLogging.log_info(f"Start searching")
+        # es_search_res = self.es_client.msearch(body=msearch_body)
+        es_search_res = self.es_client.search(index="fb_post-2024-12-13", body={
+            "query": {
+                "match_all": {}
+            },
+            "size": 10000
+        })
+        TerminalLogging.log_info(f"Done searching")
+
+        
+        node_lists = self.compute_keyword_nodes_sequentially(list_posts=es_search_res)
+        for node in node_lists:
+            print(node.keywords)
+            for post in node.post_texts_dict.values():
+                print(post)
+            # if len(node.relevant_nodes) == 0:
+            #     continue
+
+            # print(node.keywords, "\nRelevant nodes\n")
+            # [print(other_node.keywords) for other_node in node.relevant_nodes]
+            # print("\n --- Related texts --- \n")
+
+            # for node_id in node.relevant_node_texts_mapping.keys():
+            #     print(node.relevant_node_texts_mapping.get(node_id))
+
+            print("\n#################################################\n")
+
+        # for node in node_lists:
+        #     if len(node.relevant_nodes) == 0:
+        #         print(node.keywords)
+        #         [print(node.post_texts_dict[npt]) for npt in node.post_texts_dict]
+        #         print("\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n")
+
+        # return
+    
+
         keyword_nodes_list = self.compute_keyword_nodes(list_keywords=filtered_keys, dict_keyword_posts=dict_keyword_posts)
         TerminalLogging.log_info(f"Computed {len(keyword_nodes_list)} nodes!")
         list_grouping = []
+
+        graph_dict = dict()
         for node in keyword_nodes_list:
             if len(node.relevant_nodes) == 0:
                 continue
             
+            # print("current node: ", node.keywords)
+            for nk in node.keywords:
+                if graph_dict.get(nk) == None:
+                    graph_dict[nk] = set()
             set_keywords = node.keywords
             set_posts = node.post_ids
             for rn in node.relevant_nodes:
-                set_keywords.update(rn.keywords)
+                for rnk in rn.keywords:
+                    if graph_dict.get(rnk) == None:
+                        graph_dict[rnk] = set()
+
+                    graph_dict[nk].add(rnk)
+                    graph_dict[rnk].add(nk)
+                # print(node.post_ids.intersection(rn.post_ids))
+                # set_keywords.update(rn.keywords)
+
+        graph_dict = dict(sorted(graph_dict.items(), key=lambda item: len(item[1]), reverse=True))
+        for vertex in graph_dict.keys():
+            print(vertex)
+            print(graph_dict[vertex])
+            print(len(graph_dict[vertex]))
+            print("\n#####################################\n")
             
-            found_related = False
-            for g in list_grouping:
-                other_set_keywords = g["set_keywords"]
-                other_posts = g["posts"]
-                if self._keywords_sets_can_be_merged(set_keywords=set_keywords, other_set_keywords=other_set_keywords):
-                    other_set_keywords.update(set_keywords)
-                    other_posts.update(set_posts)
-                    found_related = True
-                    break
+            # print(set_keywords)
+            # print("--------------------------------------")
+
+            # found_related = False
+            # for g in list_grouping:
+            #     other_set_keywords = g["set_keywords"]
+            #     if self._keywords_sets_can_be_merged(set_keywords=set_keywords, other_set_keywords=other_set_keywords):
+            #         g["set_keywords"].update(set_keywords)
+            #         g["posts"].update(set_posts)
+            #         found_related = True
+            #         break
             
-            if not found_related:
-                list_grouping.append({
-                    "set_keywords": set_keywords,
-                    "posts": set_posts
-                })
+            # if not found_related:
+            #     list_grouping.append({
+            #         "set_keywords": set_keywords,
+            #         "posts": set_posts
+            #     })
+        return
 
         msearch_body = []
         list_set_keywords = []
@@ -116,6 +186,8 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         es_search_res = self.es_client.msearch(body=msearch_body)
         list_trends = []
         for sk, r in zip(list_set_keywords, es_search_res['responses']):
+            # TerminalLogging.log_info(f"Keywords {sk}")
+            print(f"Keywords {sk}")
             list_texts = []
             set_images = set()
             for doc in r['hits']['hits']:
@@ -125,31 +197,83 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
                 keywords = set(_source.get("keywords"))
                 images = _source.get("images")
                 text = _source.get("text")
+                if "... See more" in text:
+                    continue
 
                 if len(sk) <= 2:
                     if len(keywords.intersection(sk)) == len(sk):
                         list_texts.append(text)
+                        print(text, keywords, doc.get("_id"), "\t ---END---")
                         if images != None:
                             set_images.update(set(images))
-                elif len(keywords.intersection(sk)) >= math.ceil(len(sk)/3):
+                elif len(keywords.intersection(sk)) >= math.floor(len(sk)*3/4):
                     list_texts.append(text)
+                    print(text, keywords, doc.get("_id"), "\t ---END---")
                     if images != None:
                         set_images.update(set(images))
 
-            TerminalLogging.log_info(f"Keywords {sk}")
-            content_dict = self._summarize_texts(list_text=list_texts)
-            TerminalLogging.log_info(f"{content_dict}")
-            sum_trend = FastTrendEntity(title=content_dict.get("title"),
-                                        content=content_dict.get("content"),
-                                        images=list(set_images),
-                                        keywords=list(sk),
-                                        update_time=now.strftime("%Y-%m-%d %H:%M:%S"))
-            list_trends.append(sum_trend.to_dict())
+            if len(list_texts) == 0:
+                continue
+            
+            print("\nClusters\n")
+            mini_clusters = []
+            for text_el in list_texts:
+                if len(mini_clusters) == 0:
+                    mini_clusters.append([text_el])
+                    continue
 
-        insert_statement = "INSERT INTO fb.fast_trends (%s) VALUES %s"
-        query_insert, value_insert = InsertPgUtils.generate_query_insert_list_dict(insert_statement=insert_statement, data_list=list_trends)
-        self.pg_conn.cursor().execute(query_insert, value_insert)
-        self.pg_conn.commit()
+                text_el_is_added = False
+                cosine_dict = dict()
+                for index, mc in enumerate(mini_clusters):
+                    text_el_is_similar = True
+                    list_cosine = []
+                    for text_node in mc:
+                        cosine = GraphUtils.get_cosine(text_el, text_node)
+                        print(text_el, "\n", text_node, f"\n{cosine}\n")
+                        if cosine < 0.4:
+                            text_el_is_similar = False
+                            break
+                        list_cosine.append(cosine)
+
+                    if text_el_is_similar:
+                        cosine_dict[index] = sum(list_cosine)/len(list_cosine)
+                    # if text_el_is_similar:
+                    #     text_el_is_added = True
+                    #     mc.append(text_el)
+
+                if len(cosine_dict.keys()) == 0:
+                    mini_clusters.append([text_el])
+                else:
+                    max_cosine = 0
+                    max_cosine_pos = 0
+                    for ck in cosine_dict.keys():
+                        if cosine_dict.get(ck) > max_cosine:
+                            max_cosine = cosine_dict.get(ck)
+                            max_cosine_pos = ck
+                    mini_clusters[max_cosine_pos].append(text_el)
+
+                # if not text_el_is_added:
+                #     mini_clusters.append([text_el])
+
+            for mc in mini_clusters:
+                for c in mc:
+                    print(c)
+                print("\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n")
+
+            print("\n#############################################\n")
+        #     content_dict = self._summarize_texts(list_text=list_texts)
+        #     TerminalLogging.log_info(f"{content_dict}")
+        #     sum_trend = FastTrendEntity(title=content_dict.get("title"),
+        #                                 content=content_dict.get("content"),
+        #                                 images=list(set_images),
+        #                                 keywords=list(sk),
+        #                                 update_time=now.strftime("%Y-%m-%d %H:%M:%S"))
+        #     list_trends.append(sum_trend.to_dict())
+
+        # insert_statement = "INSERT INTO fb.fast_trends (%s) VALUES %s"
+        # query_insert, value_insert = InsertPgUtils.generate_query_insert_list_dict(insert_statement=insert_statement, data_list=list_trends)
+        # self.pg_conn.cursor().execute(query_insert, value_insert)
+        # self.pg_conn.commit()
 
         self.clean_up()
     
