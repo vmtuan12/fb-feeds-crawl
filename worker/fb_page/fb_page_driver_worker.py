@@ -140,6 +140,14 @@ class FbPageDriverWorker(DriverWorker):
                 self.kafka_producer.send(Kafka.TOPIC_DEAD_PAGES, {"page": page})
                 self.kafka_producer.flush()
                 raise PageCannotAccessException()
+            
+            try:
+                vscroller_el = """document.querySelector('[data-type="vscroller"]')"""
+                scroll_value = 250
+                self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
+                self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {scroll_value})""")
+            except Exception as e:
+                pass
 
             sleep(0.5)
         
@@ -182,6 +190,7 @@ class FbPageDriverWorker(DriverWorker):
         page_is_ready = self._check_ready(page=page_name_or_id)
         if not page_is_ready:
             TerminalLogging.log_info(f"Page {page_name_or_id} needs to be rechecked")
+            self.driver.save_screenshot('page_need_rechecked.png')
             self.kafka_producer.send(Kafka.TOPIC_RECHECK_PAGES, {"page": page_name_or_id})
             self.kafka_producer.flush()
             raise PageNotReadyException(proxy_dir=self.proxy_dir, recheck=True)
