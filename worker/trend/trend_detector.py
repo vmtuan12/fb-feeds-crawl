@@ -57,7 +57,10 @@ class TrendDetector():
     def _detect_cluster(self, cluster_id: int, post_len: int):
         cluster = self.posts_clusters.get(cluster_id)
         TerminalLogging.log_info(f"Cluster with keywords {cluster.keywords} has been detected")
-        self.kafka_producer.send(Kafka.TOPIC_RISING_TRENDS, cluster.posts)
+        self.kafka_producer.send(Kafka.TOPIC_RISING_TRENDS, {
+            "time": self._get_current_time().strftime("%Y-%m-%d %H:%M:%S"), 
+            "data": cluster.posts
+        })
         self.kafka_producer.flush()
         self.detected_clusters[cluster_id] = post_len
 
