@@ -12,13 +12,13 @@ import math
 
 class TrendDetector():
     def __init__(self) -> None:
-        # self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
-        #                                             .set_group_id(Kafka.GROUP_ID_TREND_DETECTOR)\
-        #                                             .set_auto_offset_reset("latest")\
-        #                                             .set_topics(Kafka.TOPIC_PARSED_POST)\
-        #                                             .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
-        # self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
-        #                                             .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
+        self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .set_group_id(Kafka.GROUP_ID_TREND_DETECTOR)\
+                                                    .set_auto_offset_reset("latest")\
+                                                    .set_topics(Kafka.TOPIC_PARSED_POST)\
+                                                    .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
+        self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .build()
         
         self.clustered_posts = set()
         self.posts_clusters = dict()
@@ -30,7 +30,7 @@ class TrendDetector():
         self.start_time = self._get_current_time()
 
     def _get_current_time(self) -> datetime:
-        return datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+        return datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).replace(tzinfo=None)
     
     def _need_to_reset_clusters(self) -> bool:
         current_time = self._get_current_time()
@@ -52,10 +52,16 @@ class TrendDetector():
         return cl
     
     def _detect_cluster(self, cluster_id: int, post_len: int):
-        # note: produce to kafka
+        cluster = self.posts_clusters.get(cluster_id)
+        TerminalLogging.log_info(f"Cluster with keywords {cluster.keywords} has been detected")
+        self.kafka_producer.send(Kafka.TOPIC_RISING_TRENDS, cluster.posts)
+        self.kafka_producer.flush()
         self.detected_clusters[cluster_id] = post_len
         
-    def cluster_post(self, post: dict):
+    def cluster_post(self, post: dict) -> int:
+        current_time = self._get_current_time()
+        post_time = datetime.strptime(post["post_time"], "%Y-%m-%d %H:%M:%S")
+
         post_id = post.get("id")
         post_text = post.get("text")
         post_images = post.get("images")
@@ -67,17 +73,24 @@ class TrendDetector():
             "images": post_images,
             "keywords": list_keywords
         }
+        if post_id in self.clustered_posts:
+            return 0
+        
         self.clustered_posts.add(post_id)
 
-        TerminalLogging.log_info(f"Processing id {post_id}")
+        if (current_time - post_time).days >= 1:
+            TerminalLogging.log_info(f"Id {post_id} has invalid post time. Skipped.")
+            return 0
+
         if "See more" in post_text or post_text.count(" ") < 9:
             TerminalLogging.log_info(f"Id {post_id} has invalid text. Skipped.")
-            return
+            return 0
         
         if len(self.posts_clusters.keys()) == 0:
             self._create_new_cluster(post=post_dict)
-            return
+            return 1
         
+        TerminalLogging.log_info(f"Processing id {post_id}")
         doc_belong_to_a_node = False
         max_avg_cosine = 0
         cluster_with_max_cosine = 0
@@ -106,11 +119,13 @@ class TrendDetector():
             cluster_with_max_cosine_post_len = len(self.posts_clusters[cluster_with_max_cosine].posts.keys())
             if cluster_with_max_cosine_post_len % 3 == 0:
                 self._detect_cluster(cluster_id=cluster_with_max_cosine, post_len=cluster_with_max_cosine_post_len)
-
+        
         else:
             if len(list_keywords) == 0:
-                return
+                return 0
             self._create_new_cluster(post=post_dict)
+
+        return 1
 
     def merge_clusters(self):
         TerminalLogging.log_info(f"Merging clusters ...")
@@ -152,13 +167,13 @@ class TrendDetector():
                 if best_high_intersection_count_cluster != None:
                     for post in cluster.posts.values():
                         merged_graph[best_high_intersection_count_cluster].add_post(post)
-                    merged_graph[best_high_intersection_count_cluster].add_sub_cluster(cluster_id)
+                    merged_graph[best_high_intersection_count_cluster].add_sub_cluster(cluster)
                     continue
                     
                 if best_merged_cluster_id != None:
                     for post in cluster.posts.values():
                         merged_graph[best_merged_cluster_id].add_post(post)
-                    merged_graph[best_merged_cluster_id].add_sub_cluster(cluster_id)
+                    merged_graph[best_merged_cluster_id].add_sub_cluster(cluster)
                     cluster_is_merged = True
 
                 if not cluster_is_merged:
@@ -176,10 +191,12 @@ class TrendDetector():
                 cluster_intersection = set_cluster_and_subs.intersection(detected_cluster_ids)
 
                 if len(cluster_intersection) == 0:
+                    TerminalLogging.log_info(f"Detect cluster after merging")
                     self._detect_cluster(cluster_id=cluster_id, post_len=current_cluster_posts_len)
                 else:
                     count_detected_posts = sum([self.detected_clusters[cid] for cid in cluster_intersection])
                     if current_cluster_posts_len - count_detected_posts >= 3:
+                        TerminalLogging.log_info(f"Detect cluster after merging")
                         self._detect_cluster(cluster_id=cluster_id, post_len=current_cluster_posts_len)
 
     def save_cluster_checkpoint(self):
@@ -205,36 +222,48 @@ class TrendDetector():
                 print(post)
 
 
-    # def start(self, max_records=5):
-    #     count_consumed_msgs = 0
-    #     cluster_is_just_merged = False
+    def start(self, max_records=1):
+        count_consumed_msgs = 0
+        cluster_is_just_merged = False
         
-    #     while (True):
-    #         records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=3000)
-    #         TerminalLogging.log_info(f"Polled {len(records.items())} items!")
+        while (True):
+            records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=3000)
+            TerminalLogging.log_info(f"Polled {len(records.items())} items!")
 
-    #         if len(records.items()) == 0 and not cluster_is_just_merged:
-    #             self.merge_clusters()
-    #             cluster_is_just_merged = True
-    #             continue
+            if len(records.items()) == 0 and not cluster_is_just_merged:
+                self.merge_clusters()
+                cluster_is_just_merged = True
+                count_consumed_msgs = 0
+                continue
  
-    #         for topic_data, consumer_records in records.items():
-    #             TerminalLogging.log_info(f"Processing {len(consumer_records)} records!")
-    #             for consumer_record in consumer_records:
-    #                 parsed_post = consumer_record.value
-    #                 self.cluster_post(post=parsed_post)
+            for topic_data, consumer_records in records.items():
+                TerminalLogging.log_info(f"Processing {len(consumer_records)} records!")
+                for consumer_record in consumer_records:
+                    parsed_post = consumer_record.value
+                    valid_msg = self.cluster_post(post=parsed_post)
 
-    #                 cluster_is_just_merged = False
-    #                 count_consumed_msgs += 1
+                    cluster_is_just_merged = False
+                    count_consumed_msgs += valid_msg
 
-    #         if count_consumed_msgs >= self.merge_clusters_threshold:
-    #             self.merge_clusters()
-                # count_consumed_msgs = 0
+            if count_consumed_msgs >= self.merge_clusters_threshold:
+                self.merge_clusters()
+                count_consumed_msgs = 0
 
-    #         if self._need_to_reset_clusters():
-    #             if not cluster_is_just_merged:
-    #                 self.merge_clusters()
+            if self._need_to_reset_clusters():
+                if not cluster_is_just_merged:
+                    self.merge_clusters()
+                    count_consumed_msgs = 0
 
-    #             self.save_cluster_checkpoint()
-    #             self.posts_clusters = dict()
-    #             self.current_index = 0
+                self.save_cluster_checkpoint()
+                self.posts_clusters = dict()
+                self.current_index = 0
+
+    def clean_up(self):
+        self.kafka_consumer.close(autocommit=False)
+        self.kafka_producer.close(timeout=5)
+ 
+    def __del__(self):
+        self.clean_up()
+    
+    def __delete__(self):
+        self.clean_up()
