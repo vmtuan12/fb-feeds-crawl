@@ -199,6 +199,7 @@ class TrendDetector():
                     merged_graph[cluster_id] = cluster
 
         self.posts_clusters = merged_graph
+        self.save_cluster_checkpoint()
         TerminalLogging.log_info(f"Done merging clusters")
 
         detected_cluster_ids = set(self.detected_clusters.keys())
@@ -249,7 +250,7 @@ class TrendDetector():
             records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=3000)
             TerminalLogging.log_info(f"Polled {len(records.items())} items!")
 
-            if len(records.items()) == 0 and not cluster_is_just_merged:
+            if len(records.items()) == 0 and count_consumed_msgs >= int(self.merge_clusters_threshold / 2):
                 self.merge_clusters()
                 cluster_is_just_merged = True
                 count_consumed_msgs = 0
@@ -273,7 +274,6 @@ class TrendDetector():
                     self.merge_clusters()
                     count_consumed_msgs = 0
 
-                self.save_cluster_checkpoint()
                 self.posts_clusters = dict()
                 self.current_index = 0
 
