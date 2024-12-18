@@ -27,6 +27,15 @@ class ParserUtils():
     RE_SPECIAL_CHARS = r'[\.\,\!\@\#\$\%\^\&\*\(\)\=\|\"\'\;\:\‘\’\“\”\‼️\-\[\]\{\}\?\<\>\…\/\\\~\+]'
 
     @classmethod
+    def clean_text(cls, text: str) -> str:
+        processed_text = text.strip().replace("\n", " ").replace("\t", " ")
+        processed_text = cls.strip_emoji(processed_text)
+        processed_text = cls.strip_hashtag(processed_text)
+        processed_text = cls.strip_url(processed_text)
+        processed_text = cls.strip_special_chars(processed_text)
+        return processed_text
+
+    @classmethod
     def strip_hashtag(cls, text: str) -> str:
         return cls.RE_HASHTAG.sub(r'', text)
 
