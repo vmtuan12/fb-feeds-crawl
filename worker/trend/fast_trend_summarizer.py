@@ -1,21 +1,22 @@
 from worker.trend.trend_summarizer import TrendSummarizerWorker
-from connectors.db_connector import DbConnectorBuilder
-from utils.constants import ElasticsearchConnectionConstant as ES, RedisConnectionConstant as RedisCons, PostgresConnectionConstant as PgCons
-from utils.insert_pg_utils import InsertPgUtils
+from connectors.db_connector import DbConnectorBuilder, KafkaConsumerBuilder
+from utils.constants import ElasticsearchConnectionConstant as ES, KafkaConnectionConstant as Kafka, PostgresConnectionConstant as PgCons
 from datetime import datetime, timedelta
+from entities.entities import TrendSummaryCluster
 from custom_logging.logging import TerminalLogging
-from entities.entities import FastTrendEntity
-from utils.graph_utils import GraphUtils
+from utils.parser_utils import ParserUtils
 import pytz
 import math
+import os
+import hashlib
 
 class FastTrendSummarizerWorker(TrendSummarizerWorker):
     def __init__(self) -> None:
-        self.redis_conn = DbConnectorBuilder().set_host(RedisCons.HOST)\
-                                                .set_port(RedisCons.PORT)\
-                                                .set_username(RedisCons.USERNAME)\
-                                                .set_password(RedisCons.PASSWORD)\
-                                                .build_redis()
+        self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
+                                                    .set_group_id(Kafka.GROUP_ID_TREND_SUMMARIZER)\
+                                                    .set_auto_offset_reset("latest")\
+                                                    .set_topics(Kafka.TOPIC_RISING_TRENDS)\
+                                                    .build()
         self.pg_conn = DbConnectorBuilder().set_host(PgCons.HOST)\
                                             .set_port(PgCons.PORT)\
                                             .set_username(PgCons.USER)\
@@ -28,257 +29,86 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
                                                 .set_password(ES.PASSWORD)\
                                                 .build_es_client()
         
+        self.consumed_clusters = dict()
+        self.cluster_expired_threshold = int(os.getenv("CLUSTER_EXPIRED_THRESHOLD", "86400"))
+        
     def _append_search_body(self, msearch_body: list, id_list: list[str], current_date: str):
         _index = f'fb_post-{current_date}'
         msearch_body.append({ "index": _index })
         msearch_body.append({ "query": { "terms": { "_id" : id_list }}, "size": 10000, "sort": [{ "post_time": { "order": "desc" } }]})
 
-    def _keywords_sets_can_be_merged(self, set_keywords: set, other_set_keywords: set) -> bool:
-        len_set_keywords = len(set_keywords)
-        len_other_set_keywords = len(other_set_keywords)
-        intersection = set_keywords.intersection(other_set_keywords)
+    def _get_current_time(self) -> datetime:
+        return datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).replace(tzinfo=None)
 
-        if len_set_keywords > len_other_set_keywords:
-            if len_other_set_keywords <= 2 and len(intersection) == len_other_set_keywords:
-                return True
-            if len_other_set_keywords > 2 and len(intersection) >= math.ceil(len_other_set_keywords/2):
-                return True
-        elif len_set_keywords < len_other_set_keywords:
-            if len_set_keywords <= 2 and len(intersection) == len_set_keywords:
-                return True
-            if len_set_keywords > 2 and len(intersection) >= math.ceil(len_set_keywords/2):
-                return True
+    def _generate_cluster_id(self, cluster: dict) -> str:
+        timestamp = int(datetime.strptime(cluster.get("time"), "%Y-%m-%d %H:%M:%S").timestamp())
+        union_text = "".join(cluster.get("data").keys())
+        return timestamp + "_" + hashlib.sha256(union_text.encode('utf-8')).hexdigest()
+
+    def _compute_texts_max_and_avg_length(self, data: dict) -> tuple[int, float]:
+        sum_len = 0
+        max_len = 0
+        count_valid_text = 0
+        for p in data.values():
+            text = p.get("text")
+            cleaned_text = ParserUtils.clean_text(text=text)
+            count_valid_text += (1 if len(cleaned_text > 0) else 0)
+            sum_len += len(cleaned_text)
+            if len(cleaned_text) > max_len:
+                max_len = len(cleaned_text)
+        return max_len, round(sum_len / count_valid_text, 2)
+    
+    def _create_cluster(self, cluster: dict) -> TrendSummaryCluster:
+        cluster_data = cluster.get("data")
+        cluster_id = self._generate_cluster_id(cluster=cluster)
+
+        cluster_entity = TrendSummaryCluster(cluster_id=cluster_id)
+        cluster_entity.set_max_and_avg_text_len(self._compute_texts_max_and_avg_length(data=cluster_data))
+        cluster_entity.update_data(cluster_data)
+        self.consumed_clusters[cluster_id] = cluster_entity
+
+        return cluster_entity
+    
+    def _merge_2_clusters(self, old_cluster: TrendSummaryCluster, new_cluster_dict: dict) -> TrendSummaryCluster:
+        pass
+    
+    def add_cluster(self, cluster: dict):
+        cluster_data = cluster.get("data")
+        cluster_data_keys = set(cluster_data.keys())
+        if len(self.consumed_clusters.values()) == 0:
+            self._create_cluster(cluster=cluster)
         else:
-            if len(intersection) == len_set_keywords:
-                return True
-            if len_set_keywords > 2:
-                if len(intersection) >= math.ceil(len_set_keywords/2):
-                    return True
-        
-        return False
+            expired_clusters = []
+            current_timestamp_sec = self._get_current_time().timestamp()
+            for cid in self.consumed_clusters.keys():
+                cluster_created_timestamp = int(cid.split("_")[0])
+                if current_timestamp_sec - cluster_created_timestamp >= self.cluster_expired_threshold:
+                    expired_clusters.append(cid)
+
+            for cid in expired_clusters:
+                self.consumed_clusters.pop(cid)
+            
+            cluster_can_be_merged = False
+            for other_cluster in self.consumed_clusters.values():
+                other_cluster_data_keys = set(other_cluster.keys())
+                intersection = cluster_data_keys.intersection(other_cluster_data_keys)
+
+                if len(intersection) >= math.floor(len(cluster_data_keys) * 2/3) or \
+                    len(intersection) >= math.floor(len(other_cluster_data_keys) * 2/3):
+                    self._merge_2_clusters(old_cluster=other_cluster, new_cluster_dict=cluster)
+                    cluster_can_be_merged = True
+                    break
+
+            if not cluster_can_be_merged:
+                self._create_cluster(cluster=cluster)
 
     def start(self):
-        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
-        current_date = now.strftime("%Y-%m-%d")
-        prev_1_day_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+        for message in self.kafka_consumer:
+            msg_value = message.value
+            self.add_cluster(cluster=msg_value)
 
-        dict_keyword_posts = dict()
-        keyword_keys = self.redis_conn.keys(f"{RedisCons.PREFIX_KEYWORD}.{current_date}.*")
-
-        pipeline = self.redis_conn.pipeline()
-        for k in keyword_keys:
-            pipeline.smembers(k)
-        results = pipeline.execute()
-        for k, s in zip(keyword_keys, results):
-            dict_keyword_posts[k.split(".")[-1]] = s
-
-        filtered_keys = []
-        filtered_keys_with_posts = dict()
-        for k in keyword_keys:
-            keyword = k.split(".")[-1]
-            if len(dict_keyword_posts[keyword]) > 5:
-                # filtered_keys.append(keyword)
-                filtered_keys_with_posts[keyword] = dict_keyword_posts[keyword]
-        
-        selected_keywords = set(filtered_keys_with_posts.keys())
-        TerminalLogging.log_info(len(selected_keywords))
-        msearch_body = []
-        # s = 0
-        for key in selected_keywords:
-            self._append_search_body(msearch_body=msearch_body, id_list=list(filtered_keys_with_posts.get(key)), current_date=current_date)
-
-        TerminalLogging.log_info(f"Start searching")
-        # es_search_res = self.es_client.msearch(body=msearch_body)
-        es_search_res = self.es_client.search(index="fb_post-2024-12-13", body={
-            "query": {
-                "match_all": {}
-            },
-            "size": 10000
-        })
-        TerminalLogging.log_info(f"Done searching")
-
-        
-        node_lists = self.compute_keyword_nodes_sequentially(list_posts=es_search_res)
-        for node in node_lists:
-            print(node.keywords)
-            for post in node.post_texts_dict.values():
-                print(post)
-            # if len(node.relevant_nodes) == 0:
-            #     continue
-
-            # print(node.keywords, "\nRelevant nodes\n")
-            # [print(other_node.keywords) for other_node in node.relevant_nodes]
-            # print("\n --- Related texts --- \n")
-
-            # for node_id in node.relevant_node_texts_mapping.keys():
-            #     print(node.relevant_node_texts_mapping.get(node_id))
-
-            print("\n#################################################\n")
-
-        # for node in node_lists:
-        #     if len(node.relevant_nodes) == 0:
-        #         print(node.keywords)
-        #         [print(node.post_texts_dict[npt]) for npt in node.post_texts_dict]
-        #         print("\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n")
-
-        # return
-    
-
-        keyword_nodes_list = self.compute_keyword_nodes(list_keywords=filtered_keys, dict_keyword_posts=dict_keyword_posts)
-        TerminalLogging.log_info(f"Computed {len(keyword_nodes_list)} nodes!")
-        list_grouping = []
-
-        graph_dict = dict()
-        for node in keyword_nodes_list:
-            if len(node.relevant_nodes) == 0:
-                continue
-            
-            # print("current node: ", node.keywords)
-            for nk in node.keywords:
-                if graph_dict.get(nk) == None:
-                    graph_dict[nk] = set()
-            set_keywords = node.keywords
-            set_posts = node.post_ids
-            for rn in node.relevant_nodes:
-                for rnk in rn.keywords:
-                    if graph_dict.get(rnk) == None:
-                        graph_dict[rnk] = set()
-
-                    graph_dict[nk].add(rnk)
-                    graph_dict[rnk].add(nk)
-                # print(node.post_ids.intersection(rn.post_ids))
-                # set_keywords.update(rn.keywords)
-
-        graph_dict = dict(sorted(graph_dict.items(), key=lambda item: len(item[1]), reverse=True))
-        for vertex in graph_dict.keys():
-            print(vertex)
-            print(graph_dict[vertex])
-            print(len(graph_dict[vertex]))
-            print("\n#####################################\n")
-            
-            # print(set_keywords)
-            # print("--------------------------------------")
-
-            # found_related = False
-            # for g in list_grouping:
-            #     other_set_keywords = g["set_keywords"]
-            #     if self._keywords_sets_can_be_merged(set_keywords=set_keywords, other_set_keywords=other_set_keywords):
-            #         g["set_keywords"].update(set_keywords)
-            #         g["posts"].update(set_posts)
-            #         found_related = True
-            #         break
-            
-            # if not found_related:
-            #     list_grouping.append({
-            #         "set_keywords": set_keywords,
-            #         "posts": set_posts
-            #     })
-        return
-
-        msearch_body = []
-        list_set_keywords = []
-        for g in list_grouping:
-            list_set_keywords.append(g["set_keywords"])
-            if len(g["posts"]) == 0:
-                continue
-            self._append_search_body(msearch_body=msearch_body, id_list=list(g["posts"]), current_date=current_date)
-
-        es_search_res = self.es_client.msearch(body=msearch_body)
-        list_trends = []
-        for sk, r in zip(list_set_keywords, es_search_res['responses']):
-            # TerminalLogging.log_info(f"Keywords {sk}")
-            print(f"Keywords {sk}")
-            list_texts = []
-            set_images = set()
-            for doc in r['hits']['hits']:
-                _source = doc.get("_source")
-                if _source.get("keywords") == None:
-                    continue
-                keywords = set(_source.get("keywords"))
-                images = _source.get("images")
-                text = _source.get("text")
-                if "... See more" in text:
-                    continue
-
-                if len(sk) <= 2:
-                    if len(keywords.intersection(sk)) == len(sk):
-                        list_texts.append(text)
-                        print(text, keywords, doc.get("_id"), "\t ---END---")
-                        if images != None:
-                            set_images.update(set(images))
-                elif len(keywords.intersection(sk)) >= math.floor(len(sk)*3/4):
-                    list_texts.append(text)
-                    print(text, keywords, doc.get("_id"), "\t ---END---")
-                    if images != None:
-                        set_images.update(set(images))
-
-            if len(list_texts) == 0:
-                continue
-            
-            print("\nClusters\n")
-            mini_clusters = []
-            for text_el in list_texts:
-                if len(mini_clusters) == 0:
-                    mini_clusters.append([text_el])
-                    continue
-
-                text_el_is_added = False
-                cosine_dict = dict()
-                for index, mc in enumerate(mini_clusters):
-                    text_el_is_similar = True
-                    list_cosine = []
-                    for text_node in mc:
-                        cosine = GraphUtils.get_cosine(text_el, text_node)
-                        print(text_el, "\n", text_node, f"\n{cosine}\n")
-                        if cosine < 0.4:
-                            text_el_is_similar = False
-                            break
-                        list_cosine.append(cosine)
-
-                    if text_el_is_similar:
-                        cosine_dict[index] = sum(list_cosine)/len(list_cosine)
-                    # if text_el_is_similar:
-                    #     text_el_is_added = True
-                    #     mc.append(text_el)
-
-                if len(cosine_dict.keys()) == 0:
-                    mini_clusters.append([text_el])
-                else:
-                    max_cosine = 0
-                    max_cosine_pos = 0
-                    for ck in cosine_dict.keys():
-                        if cosine_dict.get(ck) > max_cosine:
-                            max_cosine = cosine_dict.get(ck)
-                            max_cosine_pos = ck
-                    mini_clusters[max_cosine_pos].append(text_el)
-
-                # if not text_el_is_added:
-                #     mini_clusters.append([text_el])
-
-            for mc in mini_clusters:
-                for c in mc:
-                    print(c)
-                print("\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n")
-
-            print("\n#############################################\n")
-        #     content_dict = self._summarize_texts(list_text=list_texts)
-        #     TerminalLogging.log_info(f"{content_dict}")
-        #     sum_trend = FastTrendEntity(title=content_dict.get("title"),
-        #                                 content=content_dict.get("content"),
-        #                                 images=list(set_images),
-        #                                 keywords=list(sk),
-        #                                 update_time=now.strftime("%Y-%m-%d %H:%M:%S"))
-        #     list_trends.append(sum_trend.to_dict())
-
-        # insert_statement = "INSERT INTO fb.fast_trends (%s) VALUES %s"
-        # query_insert, value_insert = InsertPgUtils.generate_query_insert_list_dict(insert_statement=insert_statement, data_list=list_trends)
-        # self.pg_conn.cursor().execute(query_insert, value_insert)
-        # self.pg_conn.commit()
-
-        self.clean_up()
-    
     def clean_up(self):
-        self.redis_conn.close()
+        self.kafka_consumer.close()
         self.es_client.close()
         self.pg_conn.close()
  

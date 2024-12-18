@@ -58,6 +58,24 @@ class RawPostEntityBuilder(Builder):
     def build(self) -> RawPostEntity:
         return RawPostEntity(text=self.text, images=self.images, reaction_count=self.reaction_count, post_time=self.post_time)
     
+class TrendSummaryCluster(BaseEntity):
+    def __init__(self, cluster_id: int) -> None:
+        self.id = cluster_id
+        self.max_text_len = 0
+        self.avg_text_len = 0
+        self.data = dict()
+
+    def update_data(self, new_data: dict):
+        self.data.update(new_data)
+
+    def set_max_and_avg_text_len(self, len_tuple: tuple[int, float]):
+        """
+        first element is the max text length
+        second element is the avg text length
+        """
+        self.max_text_len = len_tuple[0]
+        self.avg_text_len = len_tuple[1]
+
 class PostCluster(BaseEntity):
     def __init__(self, cluster_id: int) -> None:
         self.id = cluster_id
