@@ -157,9 +157,10 @@ class TrendSummarizerWorker(BaseWorker):
         return node_list
     
     def _summarize_texts(self, list_text: list) -> dict:
-        prompt = """Given a list of texts. You are an experienced writer. Summarize given texts into 1 or 2 short paragraphs, then create a interesting title. Everything is written in Vietnamese.
-        If there is a irrelevant text, do not summarize it.
-        The answer must be json-formatted, with the format {"title": <the title you have written>, "content": <the content you have summarized>}"""
+        prompt = """Bạn là một nhà văn với nhiều năm kinh nghiệm. Với dữ liệu đầu vào là 1 danh sách các đoạn văn, tóm tắt các đoạn văn đó thành một đoạn văn đầy đủ chi tiết.
+        Ngoài ra, viết thêm 1 tiêu đề thú vị cho đoạn văn vừa tóm tắt.
+        Nếu có đoạn văn nào không liên quan tới phần lớn các đoạn văn, không tóm tắt nội dung đoạn văn đó.
+        Kết quả đầu ra có dạng Json như sau {"title": <tiêu đề>, "content": <nội dung tóm tắt>}"""
         body = {"prompt": [
             {'role': 'system', 'content': prompt},
             {'role': 'user', 'content': f'{str(list_text)}'}
