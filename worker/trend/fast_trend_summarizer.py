@@ -31,6 +31,8 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         
         self.consumed_clusters = dict()
         self.cluster_expired_threshold = int(os.getenv("CLUSTER_EXPIRED_THRESHOLD", "86400"))
+        self.max_text_len_threshold = float(os.getenv("MAX_TEXT_LEN_THRESHOLD", "1.5"))
+        self.avg_text_len_threshold = float(os.getenv("AVG_TEXT_LEN_THRESHOLD", "1.5"))
         
     def _append_search_body(self, msearch_body: list, id_list: list[str], current_date: str):
         _index = f'fb_post-{current_date}'
@@ -43,7 +45,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
     def _generate_cluster_id(self, cluster: dict) -> str:
         timestamp = int(datetime.strptime(cluster.get("time"), "%Y-%m-%d %H:%M:%S").timestamp())
         union_text = "".join(cluster.get("data").keys())
-        return timestamp + "_" + hashlib.sha256(union_text.encode('utf-8')).hexdigest()
+        return str(timestamp) + "_" + hashlib.sha256(union_text.encode('utf-8')).hexdigest()
 
     def _compute_texts_max_and_avg_length(self, data: dict) -> tuple[int, float]:
         sum_len = 0
@@ -52,13 +54,14 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         for p in data.values():
             text = p.get("text")
             cleaned_text = ParserUtils.clean_text(text=text)
-            count_valid_text += (1 if len(cleaned_text > 0) else 0)
+            count_valid_text += (1 if len(cleaned_text) > 0 else 0)
             sum_len += len(cleaned_text)
             if len(cleaned_text) > max_len:
                 max_len = len(cleaned_text)
         return max_len, round(sum_len / count_valid_text, 2)
     
     def _create_cluster(self, cluster: dict) -> TrendSummaryCluster:
+        TerminalLogging.log_info(f"Creating new cluster")
         cluster_data = cluster.get("data")
         cluster_id = self._generate_cluster_id(cluster=cluster)
 
@@ -67,9 +70,42 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         cluster_entity.update_data(cluster_data)
         self.consumed_clusters[cluster_id] = cluster_entity
 
+        self._summarize_and_save_content(cluster=cluster_entity)
+
         return cluster_entity
     
-    def _merge_2_clusters(self, old_cluster: TrendSummaryCluster, new_cluster_dict: dict) -> TrendSummaryCluster:
+    def _merge_2_clusters(self, old_cluster: TrendSummaryCluster, new_cluster_dict: dict) -> TrendSummaryCluster | None:
+        TerminalLogging.log_info(f"Merging 2 clusters")
+        new_cluster_data = new_cluster_dict.get("data")
+        new_posts_dict = dict()
+
+        old_cluster_post_ids = set(old_cluster.data.keys())
+        for pid in new_cluster_data.keys():
+            if pid not in old_cluster_post_ids:
+                new_posts_dict[pid] = new_cluster_data[pid]
+
+        if len(new_posts_dict.keys()) == 0:
+            return None
+        
+        new_max_text_len, new_avg_text_len = self._compute_texts_max_and_avg_length(data=new_posts_dict)
+        need_rewrite = False
+        if round(new_max_text_len / old_cluster.max_text_len, 1) >= self.max_text_len_threshold or \
+            round(new_avg_text_len / old_cluster.avg_text_len, 1) >= self.avg_text_len_threshold:
+            old_cluster.set_max_and_avg_text_len(len_tuple=(new_max_text_len, new_avg_text_len))
+            need_rewrite = True
+            pass
+
+        old_cluster.update_data(new_data=new_posts_dict)
+        if need_rewrite:
+            self._summarize_and_save_content(cluster=old_cluster)
+
+        return old_cluster
+    
+    def _summarize_and_save_content(self, cluster: TrendSummaryCluster):
+        TerminalLogging.log_info(f"Cluster {cluster.id} needs to be summarized")
+        print(cluster.id)
+        [print(d.get("text")) for d in cluster.data.values()]
+        print("\n######################################\n")
         pass
     
     def add_cluster(self, cluster: dict):
@@ -90,7 +126,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
             
             cluster_can_be_merged = False
             for other_cluster in self.consumed_clusters.values():
-                other_cluster_data_keys = set(other_cluster.keys())
+                other_cluster_data_keys = set(other_cluster.data.keys())
                 intersection = cluster_data_keys.intersection(other_cluster_data_keys)
 
                 if len(intersection) >= math.floor(len(cluster_data_keys) * 2/3) or \
@@ -104,6 +140,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
 
     def start(self):
         for message in self.kafka_consumer:
+            TerminalLogging.log_info(f"Consumed message at partition {message.partition}, offset {message.offset}")
             msg_value = message.value
             self.add_cluster(cluster=msg_value)
 
