@@ -87,10 +87,11 @@ class TrendDetector():
             "text": post_text,
             "images": post_images,
             "reaction_count": post_reaction,
+            "post_time": post["post_time"],
             "keywords": list_keywords
         }
 
-        if (current_time - post_time).seconds >= self.post_time_sec_threshold:
+        if (current_time - post_time).total_seconds() >= self.post_time_sec_threshold:
             TerminalLogging.log_info(f"Id {post_id} has invalid post time. Skipped.")
             return 0
         
