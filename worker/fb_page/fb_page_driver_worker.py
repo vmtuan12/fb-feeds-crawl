@@ -17,13 +17,14 @@ import pytz
 from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
-import json
+import os
 import traceback
 
 class FbPageDriverWorker(DriverWorker):
     def __init__(self, profile_name: str, kafka_producer: KafkaProducer | None = None, min_post_count: int = 10) -> None:
         self.base_url = "https://m.facebook.com/{}?locale=en_US"
         self.min_post_count = min_post_count
+        self.timeout_sec = int(os.getenv("TIMEOUT_SEC", "240"))
 
         self.window_w, self.window_h = 1200, 900
 
@@ -177,7 +178,7 @@ class FbPageDriverWorker(DriverWorker):
 
         return True
             
-    def start(self, page_name_or_id: str):
+    def start(self, page_name_or_id: str, scrape_threshold: int):
         target_url = self.base_url.format(page_name_or_id)
 
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
@@ -209,7 +210,7 @@ class FbPageDriverWorker(DriverWorker):
             TerminalLogging.log_info(f"{target_url} - {len(posts)} posts")
             # if len(posts) <= 5:
             #     len_post_less_than_5 += 1
-            if (len(posts) >= self.min_post_count) or (post_not_change_count >= 500) or (time() - start_time) > 300:
+            if (len(posts) >= scrape_threshold) or (post_not_change_count >= 500) or (time() - start_time) >= self.timeout_sec:
                 break
             
             # if len_post_less_than_5 % 300 == 0:

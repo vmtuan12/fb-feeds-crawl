@@ -33,7 +33,7 @@ class ConsumerWorker():
         
         return worker
     
-    def run_worker(self, page_name_or_id: str, cmd_type: str):
+    def run_worker(self, page_name_or_id: str | None, scrape_threshold: int | None, cmd_type: str):
         TerminalLogging.log_info(threading.current_thread().name + f" is running {cmd_type} {page_name_or_id}")
 
         worker = None
@@ -45,7 +45,7 @@ class ConsumerWorker():
 
                 try:
                     if cmd_type == CommandType.SCRAPE_PAGE:
-                        worker.start(page_name_or_id=page_name_or_id)
+                        worker.start(page_name_or_id=page_name_or_id, scrape_threshold=scrape_threshold)
                     elif cmd_type == CommandType.CLEAR_CACHE:
                         worker._clear_cache()
                         subprocess.run(f"{SysConstant.CLEAR_DATA_CHROME_SCRIPT}", shell=True)
@@ -85,9 +85,10 @@ class ConsumerWorker():
                 command = message.value
                 cmd_type = CommandUtils.get_command_type(command=command)
                 page = CommandUtils.get_page(command=command)
-                TerminalLogging.log_info(f"{cmd_type} {page}")
+                scrape_threshold = CommandUtils.get_scrape_threshold(command=command)
+                TerminalLogging.log_info(f"{cmd_type} {page} {scrape_threshold}")
 
-                executor.submit(self.run_worker, page, cmd_type)
+                executor.submit(self.run_worker, page, scrape_threshold, cmd_type)
 
     def clean_up(self):
         self.kafka_producer.flush()
