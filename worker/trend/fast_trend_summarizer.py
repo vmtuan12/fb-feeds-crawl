@@ -5,10 +5,12 @@ from datetime import datetime, timedelta
 from entities.entities import TrendSummaryCluster
 from custom_logging.logging import TerminalLogging
 from utils.parser_utils import ParserUtils
+from utils.insert_pg_utils import InsertPgUtils
 import pytz
 import math
 import os
 import hashlib
+import traceback
 
 class FastTrendSummarizerWorker(TrendSummarizerWorker):
     def __init__(self) -> None:
@@ -70,7 +72,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         cluster_entity.update_data(cluster_data)
         self.consumed_clusters[cluster_id] = cluster_entity
 
-        self._summarize_and_save_content(cluster=cluster_entity)
+        self._summarize_and_save_content(cluster=cluster_entity, need_rewrite=True)
 
         return cluster_entity
     
@@ -93,20 +95,75 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
             round(new_avg_text_len / old_cluster.avg_text_len, 1) >= self.avg_text_len_threshold:
             old_cluster.set_max_and_avg_text_len(len_tuple=(new_max_text_len, new_avg_text_len))
             need_rewrite = True
-            pass
 
         old_cluster.update_data(new_data=new_posts_dict)
-        if need_rewrite:
-            self._summarize_and_save_content(cluster=old_cluster)
+        self._summarize_and_save_content(cluster=old_cluster, need_rewrite=need_rewrite)
 
         return old_cluster
     
-    def _summarize_and_save_content(self, cluster: TrendSummaryCluster):
-        TerminalLogging.log_info(f"Cluster {cluster.id} needs to be summarized")
-        print(cluster.id)
-        [print(d.get("text")) for d in cluster.data.values()]
-        print("\n######################################\n")
-        pass
+    def _summarize_and_save_content(self, cluster: TrendSummaryCluster, need_rewrite=False):
+        TerminalLogging.log_info(f"Saving cluster {cluster.id}")
+        current_time_str = self._get_current_time().strftime("%Y-%m-%d %H:%M:%S")
+
+        title, content = None, None
+        if need_rewrite:
+            title, content = None, None
+
+        set_keywords = set()
+        event_posts_dict = []
+        for d in cluster.data.values():
+            formatted_d = d.copy()
+            d_keywords = set(formatted_d.pop("keywords"))
+
+            formatted_d["reactions"] = formatted_d.pop("reaction_count")[0]
+            formatted_d["post_id"] = formatted_d.pop("id")
+            formatted_d["event_id"] = cluster.id
+
+            event_posts_dict.append(formatted_d)
+
+            if len(set_keywords) == 0:
+                set_keywords.update(d_keywords)
+            else:
+                if len(d_keywords) == 0:
+                    continue
+                set_keywords = set_keywords.intersection(d_keywords)
+
+        event_dict = [{
+            "id": cluster.id,
+            "update_time": current_time_str,
+            "main_keywords": list(set_keywords) if len(set_keywords) != 0 else None,
+            "title": title,
+            "content": content
+        }]
+
+        cursor = self.pg_conn.cursor()
+
+        insert_event_statement = f"""INSERT INTO {PgCons.TABLE_EVENTS} (%s) VALUES %s
+        ON CONFLICT (id) DO UPDATE SET
+        update_time = EXCLUDED.update_time,
+        main_keywords = COALESCE(EXCLUDED.main_keywords, {PgCons.TABLE_EVENTS}.main_keywords),
+        title = COALESCE(EXCLUDED.title, {PgCons.TABLE_EVENTS}.title),
+        content = COALESCE(EXCLUDED.content, {PgCons.TABLE_EVENTS}.content)
+        """
+        insert_event_query, formatted_event_value = InsertPgUtils.generate_query_insert_list_dict(insert_statement=insert_event_statement, data_list=event_dict)
+
+        insert_posts_statement = f"""INSERT INTO {PgCons.TABLE_EVENTS_POSTS} (%s) VALUES %s
+        ON CONFLICT (event_id, post_id) DO UPDATE SET
+        images = COALESCE(EXCLUDED.images, {PgCons.TABLE_EVENTS_POSTS}.images),
+        reactions = EXCLUDED.reactions
+        """
+        insert_posts_query, formatted_posts_value = InsertPgUtils.generate_query_insert_list_dict(insert_statement=insert_posts_statement, data_list=event_posts_dict)
+
+        try:
+            cursor.execute(insert_event_query, formatted_event_value)
+            cursor.execute(insert_posts_query, formatted_posts_value)
+            self.pg_conn.commit()
+        except Exception as e:
+            TerminalLogging.log_error(f"Failed saving cluster {cluster.id}. Error:\n{traceback.format_exc()}")
+            raise e
+
+        cursor.close()
+        TerminalLogging.log_info(f"Successfully saved cluster {cluster.id}")
     
     def add_cluster(self, cluster: dict):
         cluster_data = cluster.get("data")
