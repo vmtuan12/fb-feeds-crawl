@@ -1,6 +1,6 @@
 from worker.trend.trend_summarizer import TrendSummarizerWorker
 from connectors.db_connector import DbConnectorBuilder, KafkaConsumerBuilder
-from utils.constants import ElasticsearchConnectionConstant as ES, KafkaConnectionConstant as Kafka, PostgresConnectionConstant as PgCons
+from utils.constants import KafkaConnectionConstant as Kafka, PostgresConnectionConstant as PgCons
 from datetime import datetime, timedelta
 from entities.entities import TrendSummaryCluster
 from custom_logging.logging import TerminalLogging
@@ -25,11 +25,6 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
                                             .set_password(PgCons.PWD)\
                                             .set_db_name(PgCons.DB)\
                                             .build_pg()
-        self.es_client = DbConnectorBuilder().set_host(ES.HOST)\
-                                                .set_port(ES.PORT)\
-                                                .set_username(ES.USERNAME)\
-                                                .set_password(ES.PASSWORD)\
-                                                .build_es_client()
         
         self.consumed_clusters = dict()
         self.cluster_expired_threshold = int(os.getenv("CLUSTER_EXPIRED_THRESHOLD", "86400"))
@@ -203,7 +198,6 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
 
     def clean_up(self):
         self.kafka_consumer.close()
-        self.es_client.close()
         self.pg_conn.close()
  
     def __del__(self):
