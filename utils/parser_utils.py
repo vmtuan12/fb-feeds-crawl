@@ -24,7 +24,16 @@ class ParserUtils():
                       "]+", re.UNICODE)
     RE_HASHTAG = re.compile("#\w*", flags=re.UNICODE)
     RE_URL = r'https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&\/\/=]*)'
-    RE_SPECIAL_CHARS = r'[\.\,\!\@\#\$\%\^\&\*\(\)\=\|\"\'\;\:\‘\’\“\”\‼️\-\[\]\{\}\?\<\>]'
+    RE_SPECIAL_CHARS = r'[\.\,\!\@\#\$\%\^\&\*\(\)\=\|\"\'\;\:\‘\’\“\”\‼️\-\[\]\{\}\?\<\>\…\/\\\~\+]'
+
+    @classmethod
+    def clean_text(cls, text: str) -> str:
+        processed_text = text.strip().replace("\n", " ").replace("\t", " ")
+        processed_text = cls.strip_emoji(processed_text)
+        processed_text = cls.strip_hashtag(processed_text)
+        processed_text = cls.strip_url(processed_text)
+        processed_text = cls.strip_special_chars(processed_text)
+        return processed_text
 
     @classmethod
     def strip_hashtag(cls, text: str) -> str:

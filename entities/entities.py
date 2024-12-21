@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 import pytz
+from utils.graph_utils import GraphUtils
+from collections.abc import Iterable
 
 class BaseEntity():
     def to_dict(self) -> dict:
@@ -57,13 +59,116 @@ class RawPostEntityBuilder(Builder):
     def build(self) -> RawPostEntity:
         return RawPostEntity(text=self.text, images=self.images, reaction_count=self.reaction_count, post_time=self.post_time)
     
+class TrendSummaryCluster(BaseEntity):
+    def __init__(self, cluster_id: int) -> None:
+        self.id = cluster_id
+        self.max_text_len = 0
+        self.avg_text_len = 0
+        self.data = dict()
+
+    def update_data(self, new_data: dict):
+        self.data.update(new_data)
+
+    def set_max_and_avg_text_len(self, len_tuple: tuple[int, float]):
+        """
+        first element is the max text length
+        second element is the avg text length
+        """
+        self.max_text_len = len_tuple[0]
+        self.avg_text_len = len_tuple[1]
+
+class PostCluster(BaseEntity):
+    def __init__(self, cluster_id: int) -> None:
+        self.id = cluster_id
+        self.keywords = set()
+        self.sub_clusters = set()
+        self.posts = dict()
+
+    def add_post(self, post: dict):
+        self.posts[post.get("id")] = post
+        self.add_keywords(new_keywords=post.get("keywords"))
+
+    def add_keywords(self, new_keywords: Iterable | None):
+        if new_keywords == None:
+            return
+        self.keywords.update(new_keywords)
+
+    def add_sub_cluster(self, other_cluster: 'PostCluster'):
+        self.sub_clusters.add(other_cluster.id)
+        self.sub_clusters.update(other_cluster.sub_clusters)
+
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["keywords"] = list(result["keywords"])
+        result["sub_clusters"] = list(result["sub_clusters"])
+        return result
+    
 class KeywordNode():
-    def __init__(self, keywords: set, post_ids: set, post_texts: set = None) -> None:
+    def __init__(self, keywords: set, post_ids: set = None, post_texts_dict: dict = None, node_id: int = None) -> None:
         self.keywords = keywords
         self.post_ids = post_ids
-        self.post_texts = post_texts
+        self.post_texts_dict = post_texts_dict
+        self.id = node_id
         self.relevant_nodes = set()
+        self.relevant_node_texts_mapping = dict()
 
+    def add_relevant_node_text(self, other_node: 'KeywordNode', other_text: str):
+        if self.relevant_node_texts_mapping.get(other_node.id) == None:
+            self.relevant_node_texts_mapping[other_node.id] = [other_text]
+        else:
+            self.relevant_node_texts_mapping[other_node.id].append(other_text)
+
+    def similar_in_post_texts(self, other_node: 'KeywordNode'):
+        other_node_is_similar = False
+        set_other_post_ids = set(other_node.post_texts_dict.keys())
+        set_cur_post_ids = set(self.post_texts_dict.keys())
+        post_ids_intersection = set_cur_post_ids.intersection(set_other_post_ids)
+
+        if len(post_ids_intersection) > 0:
+            for pid in post_ids_intersection:
+                self.add_relevant_node_text(other_node=other_node, other_text=self.post_texts_dict.get(pid))
+
+            return True
+        return False
+
+        # if len(post_ids_intersection) > 0:
+        #     other_node_is_similar = True
+        #     for pid in post_ids_intersection:
+        #         self.add_relevant_node_text(other_node=other_node, other_text=self.post_texts_dict.get(pid))
+        #     if len(post_ids_intersection) == len(set_cur_post_ids) or len(post_ids_intersection) == len(set_other_post_ids):
+        #         return True
+
+        # not_checked_other_post_ids = set_other_post_ids - post_ids_intersection
+        # not_checked_cur_post_ids = set_cur_post_ids - post_ids_intersection
+
+        # for other_pid in not_checked_other_post_ids:
+        #     is_relevant_partial_texts = False
+        #     other_text = other_node.post_texts_dict.get(other_pid)
+        #     for cur_pid in not_checked_cur_post_ids:
+        #         cur_text = self.post_texts_dict.get(cur_pid)
+        #         cosine_similarity = GraphUtils.get_cosine(text1=other_text, text2=cur_text)
+        #         if cosine_similarity >= 0.4:
+        #             is_relevant_partial_texts = True
+        #             break
+
+        #     if is_relevant_partial_texts:
+        #         other_node_is_similar = True
+        #         self.add_relevant_node_text(other_node=other_node, other_text=other_text)
+
+        # for other_text in other_node.post_texts:
+        #     is_relevant_partial_texts = False
+        #     for cur_text in self.post_texts:
+        #         cosine_similarity = GraphUtils.get_cosine(text1=other_text, text2=cur_text)
+        #         if cosine_similarity >= 0.4:
+        #             is_relevant_partial_texts = True
+        #             break
+
+        #     if is_relevant_partial_texts:
+        #         other_node_is_similar = True
+        #         self.add_relevant_node_text(other_node=other_node, other_text=other_text)
+        
+        return other_node_is_similar
+        
     def similar_in_post_ids(self, other_node: 'KeywordNode'):
         if len(other_node.keywords) == 1 and len(other_node.keywords.intersection(self.keywords)) > 0:
             return False
