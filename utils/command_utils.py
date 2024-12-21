@@ -9,5 +9,9 @@ class CommandUtils():
         return command.get("type")
     
     @classmethod
-    def get_page(cls, command: dict) -> str:
+    def get_page(cls, command: dict) -> str | None:
         return command.get("page")
+    
+    @classmethod
+    def get_scrape_threshold(cls, command: dict) -> int | None:
+        return command.get("scrape_threshold")

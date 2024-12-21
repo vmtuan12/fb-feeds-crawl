@@ -33,7 +33,13 @@ class ParserConsumer():
         
     def __parse_text(self, text: str) -> str:
         soup = BeautifulSoup(text, 'html.parser')
-        result = soup.text.strip().replace("\n", " ").replace("\t", " ")
+        result = soup.text.strip().replace("\n", " ").replace("\t", " ").replace("See more", "")
+        return result
+        
+    def __parse_reactions(self, reactions: str) -> list:
+        soup = BeautifulSoup(reactions, 'html.parser')
+        reaction_text = soup.text.strip()
+        result = [ParserUtils.approx_reactions(reaction_text)]
         return result
         
     def __generate_id(self, text: str, page: str) -> str:
@@ -51,7 +57,7 @@ class ParserConsumer():
         msg["id"] = self.__generate_id(text=msg["text"], page=msg["page"])
         msg["post_time"] = ParserUtils.approx_post_time_str(now=now, raw_post_time=msg["post_time"])
         msg["update_time"] = [msg["first_scraped_at"]]
-        msg["reaction_count"] = [ParserUtils.approx_reactions(msg["reaction_count"])]
+        msg["reaction_count"] = self.__parse_reactions(reactions=msg["reaction_count"])
 
         msg.pop('first_scraped_at')
         msg.pop('last_updated_at')

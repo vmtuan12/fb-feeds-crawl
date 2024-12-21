@@ -17,13 +17,16 @@ import pytz
 from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
-import json
+import os
 import traceback
 
 class FbPageDriverWorker(DriverWorker):
     def __init__(self, profile_name: str, kafka_producer: KafkaProducer | None = None, min_post_count: int = 10) -> None:
         self.base_url = "https://m.facebook.com/{}?locale=en_US"
         self.min_post_count = min_post_count
+        self.timeout_sec = int(os.getenv("TIMEOUT_SEC", "180"))
+        self.count_load_more_threshold = int(os.getenv("COUNT_LOAD_MORE_THRESHOLD", "400"))
+        self.sleep_to_load_time = float(os.getenv("SLEEP_TO_LOAD_TIME", "0.25"))
 
         self.window_w, self.window_h = 1200, 900
 
@@ -68,7 +71,8 @@ class FbPageDriverWorker(DriverWorker):
 
     def __find_post_reactions(self, p: WebElement) -> WebElement | None:
         try:
-            reactions = p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
+            reactions = p.find_elements(by='xpath', value=FbPageXpathUtils.XPATH_ADDITIONAL_REACTION)
+            reactions = reactions[0]
             return reactions
         except Exception as get_react_exc:
             reactions = None
@@ -85,7 +89,7 @@ class FbPageDriverWorker(DriverWorker):
         try:
             post_time = self.__find_post_time(p=p)
             # real_post_time_str = ParserUtils.approx_post_time_str(now=now, raw_post_time=post_time.get_attribute("innerHTML"))
-            reactions = self.__find_post_reactions(p=p)
+            reactions = self.__find_post_reactions(p=p).find_element(by="xpath", value='.//*[@class="native-text"]').get_attribute("outerHTML")
 
             if post_time == None or reactions == None:
                 raise Exception("Post not valid")
@@ -102,7 +106,7 @@ class FbPageDriverWorker(DriverWorker):
 
             raw_post_entity = RawPostEntity(text=p.get_attribute("outerHTML"),
                                             images=list_img_src,
-                                            reaction_count=reactions.get_attribute("innerHTML"),
+                                            reaction_count=reactions,
                                             post_time=post_time.get_attribute("innerHTML"),
                                             page=page_name_or_id).to_dict()
             
@@ -132,7 +136,6 @@ class FbPageDriverWorker(DriverWorker):
 
             if self.driver.find_element_by_id(value="main-frame-error") != None:
                 TerminalLogging.log_info(f"Cannot reach page")
-                sleep(1)
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
 
             if ("login" in self.driver.current_url) or ("not found" in self.driver.title) or (self.driver.find_element_by_xpath(value="//span[text() = 'No Posts or Tags']") != None):
@@ -140,6 +143,14 @@ class FbPageDriverWorker(DriverWorker):
                 self.kafka_producer.send(Kafka.TOPIC_DEAD_PAGES, {"page": page})
                 self.kafka_producer.flush()
                 raise PageCannotAccessException()
+            
+            try:
+                vscroller_el = """document.querySelector('[data-type="vscroller"]')"""
+                scroll_value = 250
+                self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
+                self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {scroll_value})""")
+            except Exception as e:
+                pass
 
             sleep(0.5)
         
@@ -148,7 +159,7 @@ class FbPageDriverWorker(DriverWorker):
         f.close()
         return False
 
-    def _load_more_post_text(self, perform=False, check_invalid=False):
+    def _load_more_post_text(self, perform=False, check_invalid=False, set_clicked: set = set()):
         texts_load_more = self.driver.find_elements_by_xpath(value=FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)
         print(f"load more {len(texts_load_more)} posts")
         if check_invalid:
@@ -163,13 +174,15 @@ class FbPageDriverWorker(DriverWorker):
         if perform:
             for index, t in enumerate(texts_load_more):
                 try:
-                    self.driver.execute_script("arguments[0].click();", t)
+                    if t not in set_clicked:
+                        self.driver.execute_script("arguments[0].click();", t.find_element(by='xpath', value='.//div[text() and ./span[not(@role)]]'))
+                        set_clicked.add(t)
                 except StaleElementReferenceException as sere:
                     continue
 
         return True
             
-    def start(self, page_name_or_id: str):
+    def start(self, page_name_or_id: str, scrape_threshold: int):
         target_url = self.base_url.format(page_name_or_id)
 
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
@@ -182,6 +195,7 @@ class FbPageDriverWorker(DriverWorker):
         page_is_ready = self._check_ready(page=page_name_or_id)
         if not page_is_ready:
             TerminalLogging.log_info(f"Page {page_name_or_id} needs to be rechecked")
+            self.driver.save_screenshot('page_need_rechecked.png')
             self.kafka_producer.send(Kafka.TOPIC_RECHECK_PAGES, {"page": page_name_or_id})
             self.kafka_producer.flush()
             raise PageNotReadyException(proxy_dir=self.proxy_dir, recheck=True)
@@ -194,13 +208,22 @@ class FbPageDriverWorker(DriverWorker):
         post_not_change_count = 0
         prev_post_len = 0
         start_time = time()
+        set_clicked = set()
         while (True):
             posts = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT) + self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+            for p in posts:
+                try:
+                    if ("See more" in p.get_attribute("outerHTML")) and (p not in set_clicked):
+                        self.driver.execute_script("arguments[0].click();", p.find_element(by='xpath', value='.//div[text() and ./span[not(@role)]]'))
+                        set_clicked.add(p)
+                        sleep(self.sleep_to_load_time)
+                except StaleElementReferenceException as sere:
+                    continue
 
             TerminalLogging.log_info(f"{target_url} - {len(posts)} posts")
             # if len(posts) <= 5:
             #     len_post_less_than_5 += 1
-            if (len(posts) >= self.min_post_count) or (post_not_change_count >= 500) or (time() - start_time) > 300:
+            if (len(posts) >= scrape_threshold) or (post_not_change_count >= 500) or (time() - start_time) >= self.timeout_sec:
                 break
             
             # if len_post_less_than_5 % 300 == 0:
@@ -218,7 +241,7 @@ class FbPageDriverWorker(DriverWorker):
             self.driver.execute_script(f"window.scrollTo(0, window.scrollY + {scroll_value});")
             self.driver.execute_script(f"""{vscroller_el}.scrollTo(0, {vscroller_el}.scrollTop + {scroll_value})""")
 
-        self._load_more_post_text(perform=True)
+        self._load_more_post_text(perform=True, set_clicked=set_clicked)
         
         count_load_more = 0
         while (True):
@@ -234,11 +257,12 @@ class FbPageDriverWorker(DriverWorker):
                 if not keep_waiting:
                     break
 
-            if count_load_more >= 400:
-                f = open("page_source.html", "w+")
-                f.write(self.driver.page_source)
-                f.close()
-                raise PageNotReadyException(proxy_dir=self.proxy_dir)
+            if count_load_more >= self.count_load_more_threshold:
+                break
+                # f = open("page_source.html", "w+")
+                # f.write(self.driver.page_source)
+                # f.close()
+                # raise PageNotReadyException(proxy_dir=self.proxy_dir)
             
             if len(self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_LOAD_MORE)) == 0:
                 break
@@ -246,12 +270,14 @@ class FbPageDriverWorker(DriverWorker):
         while (True):
             try:
                 TerminalLogging.log_info(f"{target_url} - getting posts")
-                posts_without_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT)
-                posts_with_image_bg = self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG)
+                posts_without_image_bg = set(self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT))
+                posts_with_image_bg = set(self.driver.find_elements_by_xpath(FbPageXpathUtils.XPATH_TEXT_WITH_BG_IMG))
+                count_success = 0
 
                 for p in posts_without_image_bg:
                     try:
                         post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id)
+                        count_success += 1
                     except Exception as e:
                         continue
                     self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
@@ -259,10 +285,12 @@ class FbPageDriverWorker(DriverWorker):
                 for p in posts_with_image_bg:
                     try:
                         post_entity = self._get_raw_post_dict(p=p, now=now, page_name_or_id=page_name_or_id, has_no_img=True)
+                        count_success += 1
                     except Exception as e:
                         continue
                     self.kafka_producer.send(Kafka.TOPIC_RAW_POST, post_entity)
-                    
+                
+                TerminalLogging.log_info(f"Successfully produced {count_success}/{scrape_threshold} posts of page {page_name_or_id}")
                 break
             except StaleElementReferenceException as sere:
                 pass

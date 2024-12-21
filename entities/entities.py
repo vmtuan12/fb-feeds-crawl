@@ -9,11 +9,12 @@ class BaseEntity():
         return self.__dict__
     
 class CommandEntity(BaseEntity):
-    def __init__(self, cmd_type: str, page: str | None = None) -> None:
+    def __init__(self, cmd_type: str, page: str | None = None, scrape_threshold: int | None = None) -> None:
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
         self.command_time = now
         self.type = cmd_type
         self.page = page
+        self.scrape_threshold = scrape_threshold
 
 class RawPostEntity(BaseEntity):
 
