@@ -5,6 +5,7 @@ from datetime import datetime
 from custom_logging.logging import TerminalLogging
 import traceback
 from datetime import datetime
+import pytz
 
 class InsertESConsumer():
     def __init__(self) -> None:
@@ -23,7 +24,7 @@ class InsertESConsumer():
         
     def _create_document_index(self, document: dict) -> dict:
         time_format = "%Y-%m-%d %H:%M:%S"
-        current_time = datetime.now()
+        current_time = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).replace(tzinfo=None)
 
         formatted_doc = {
             "text": document["text"],
@@ -34,10 +35,11 @@ class InsertESConsumer():
             "update_time": [datetime.strptime(t, time_format) for t in document["update_time"]],
             "keywords": document["keywords"]
         }
-        if (current_time - formatted_doc.get("post_time")).days > 30:
+        if (current_time - formatted_doc.get("post_time")).days > 3:
             return None
         
-        _index = f'fb_post-{document["post_time"].split(" ")[0]}'
+        post_time_month = datetime.strptime(document["post_time"], "%Y-%m-%d %H:%M:%S").strftime("%Y%m")
+        _index = f'fb_post-{post_time_month}'
 
         return {
             "_op_type": 'update',
