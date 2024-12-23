@@ -1,5 +1,5 @@
 from connectors.db_connector import KafkaConsumerBuilder, KafkaProducerBuilder, DbConnectorBuilder
-from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema, RedisConnectionConstant as RedisCons
+from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema, RedisConnectionConstant as RedisCons, SysConstant as Sys
 from utils.keyword_extract_utils import KeywordExtractionUtils
 from utils.parser_utils import ParserUtils
 from bs4 import BeautifulSoup
@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from unidecode import unidecode
 import traceback
 import hashlib
+import ahocorasick
 
 class ParserConsumer():
     def __init__(self) -> None:
@@ -31,6 +32,13 @@ class ParserConsumer():
                                                 .set_password(RedisCons.PASSWORD)\
                                                 .build_redis()
         
+        self.ahocorasick_automaton = ahocorasick.Automaton()
+        with open(Sys.KEYWORDS, "r") as f:
+            for l in f.readlines():
+                kw = l.strip()
+                self.ahocorasick_automaton.add_word(kw, kw)
+        self.ahocorasick_automaton.make_automaton()
+        
     def __parse_text(self, text: str) -> str:
         soup = BeautifulSoup(text, 'html.parser')
         result = soup.text.strip().replace("\n", " ").replace("\t", " ").replace("See more", "")
@@ -41,6 +49,21 @@ class ParserConsumer():
         reaction_text = soup.text.strip()
         result = [ParserUtils.approx_reactions(reaction_text)]
         return result
+    
+    def __match_available_keywords(self, raw_text: str) -> set:
+        found_keywords = set()
+        text = ParserUtils.clean_text(text=raw_text).lower()
+        if len(text) == 0:
+            return found_keywords
+        
+        for end_index, found_keyword in self.ahocorasick_automaton.iter(text):
+            start_index = end_index - len(found_keyword) + 1
+
+            if (start_index == 0 or not text[start_index-1].isalnum()) and \
+            (end_index + 1 == len(text) or not text[end_index + 1].isalnum()):
+                found_keywords.add(found_keyword)
+
+        return found_keywords
         
     def __generate_id(self, text: str, page: str) -> str:
         text_remove_space = ''.join([c for c in text if not c.isspace()]).lower()
@@ -58,6 +81,7 @@ class ParserConsumer():
         msg["post_time"] = ParserUtils.approx_post_time_str(now=now, raw_post_time=msg["post_time"])
         msg["update_time"] = [msg["first_scraped_at"]]
         msg["reaction_count"] = self.__parse_reactions(reactions=msg["reaction_count"])
+        msg["keywords"] = self.__match_available_keywords(raw_text=msg["text"])
 
         msg.pop('first_scraped_at')
         msg.pop('last_updated_at')
@@ -147,6 +171,7 @@ class ParserConsumer():
                 posts_have_keywords, posts_not_have_keywords = self._list_posts_have_and_not_have_keywords(list_posts=temp_parsed_posts.copy())
                 TerminalLogging.log_info(f"{len(posts_have_keywords)} posts have keywords, {len(posts_not_have_keywords)} posts dont have keywords")
                 for p in posts_have_keywords:
+                    p["keywords"] = list(p["keywords"])
                     self.kafka_producer.send(Kafka.TOPIC_PARSED_POST, value=p)
                     
                 list_need_extract_keywords += posts_not_have_keywords
