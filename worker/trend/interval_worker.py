@@ -169,6 +169,10 @@ class IntervalTrendWorker(TrendSummarizerWorker):
 
                 pool.submit(self._summarize_texts, list_text, event_id)
 
+        if len(self.events) == 0:
+            TerminalLogging.log_info(f"No new event to summarize")
+            return
+        
         insert_statement = f"""
         INSERT INTO {PgCons.TABLE_EVENTS} (%s) VALUES %s
         ON CONFLICT (id) DO UPDATE SET 
