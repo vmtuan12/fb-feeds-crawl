@@ -1,14 +1,8 @@
 from worker.base_worker import BaseWorker
-from connectors.db_connector import KafkaConsumerBuilder, DbConnectorBuilder
-from utils.constants import KafkaConnectionConstant as Kafka, SchemaPathConstant as Schema, RedisConnectionConstant as RedisCons
-from datetime import datetime, timedelta
 from custom_logging.logging import TerminalLogging
 from entities.entities import KeywordNode
-from utils.constants import APIConstant as API
 from utils.graph_utils import GraphUtils
-import requests
 import re
-import json
 
 class TrendSummarizerWorker(BaseWorker):
     def _match_acronym(self, longer_text: str, shorter_text: str) -> bool:
@@ -155,20 +149,6 @@ class TrendSummarizerWorker(BaseWorker):
                 self._add_node(node_list=node_list, node=kn)
 
         return node_list
-    
-    def _summarize_texts(self, list_text: list) -> dict:
-        prompt = """Bạn là một nhà văn với nhiều năm kinh nghiệm. Với dữ liệu đầu vào là 1 danh sách các đoạn văn, tóm tắt các đoạn văn đó thành một đoạn văn đầy đủ chi tiết.
-        Ngoài ra, viết thêm 1 tiêu đề thú vị cho đoạn văn vừa tóm tắt.
-        Nếu có đoạn văn nào không liên quan tới phần lớn các đoạn văn, không tóm tắt nội dung đoạn văn đó.
-        Kết quả đầu ra có dạng Json như sau {"title": <tiêu đề>, "content": <nội dung tóm tắt>}"""
-        body = {"prompt": [
-            {'role': 'system', 'content': prompt},
-            {'role': 'user', 'content': f'{str(list_text)}'}
-        ], "json_output": True}
-
-        response = requests.post(url=API.MODEL_API, data=json.dumps(body))
-        result = json.loads(response.text).get("data")
-        return result
     
     def start(self):
         pass
