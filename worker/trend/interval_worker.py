@@ -197,6 +197,8 @@ class IntervalTrendWorker(TrendSummarizerWorker):
         self.update_posts_reactions(cursor=cursor)
         self.write_content_for_trends(cursor=cursor)
 
+        print("\n#######################################\n")
+
         cursor.close()
 
     def clean_up(self):
