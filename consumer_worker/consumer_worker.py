@@ -62,6 +62,8 @@ class ConsumerWorker():
                     break
 
                 except (WebDriverException, ReadTimeoutError, ConnectionError) as wde:
+                    TerminalLogging.log_error("Connection error")
+                    worker.driver.save_screenshot('connection_error.png')
                     ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
                     delattr(self.thread_local_data, 'worker')
                     worker = None
