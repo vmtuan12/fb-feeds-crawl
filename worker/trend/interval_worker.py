@@ -36,7 +36,7 @@ class IntervalTrendWorker(TrendSummarizerWorker):
         return datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).replace(tzinfo=None)
     
     def _summarize_texts(self, list_text: list, event_id: str) -> dict:
-        TerminalLogging.log_error(f"Start summarizing event {event_id}")
+        TerminalLogging.log_info(f"Start summarizing event {event_id}")
         prompt = """Bạn là một nhà văn với nhiều năm kinh nghiệm. Với dữ liệu đầu vào là 1 danh sách các đoạn văn, tóm tắt các đoạn văn đó thành một đoạn văn đầy đủ chi tiết.
         Ngoài ra, viết thêm 1 tiêu đề thú vị cho đoạn văn vừa tóm tắt.
         Nếu có đoạn văn nào không liên quan tới phần lớn các đoạn văn, không tóm tắt nội dung đoạn văn đó.
