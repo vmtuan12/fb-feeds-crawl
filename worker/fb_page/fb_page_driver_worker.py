@@ -175,7 +175,7 @@ class FbPageDriverWorker(DriverWorker):
             for index, t in enumerate(texts_load_more):
                 try:
                     if t not in set_clicked:
-                        self.driver.execute_script("arguments[0].click();", t.find_element(by='xpath', value='.//div[text() and ./span[not(@role)]]'))
+                        self.driver.execute_script("arguments[0].click();", t.find_element(by='xpath', value=FbPageXpathUtils.XPATH_LOAD_MORE_EL_TO_CLICK))
                         set_clicked.add(t)
                 except StaleElementReferenceException as sere:
                     continue
@@ -214,7 +214,7 @@ class FbPageDriverWorker(DriverWorker):
             for p in posts:
                 try:
                     if ("See more" in p.get_attribute("outerHTML")) and (p not in set_clicked):
-                        self.driver.execute_script("arguments[0].click();", p.find_element(by='xpath', value='.//div[text() and ./span[not(@role)]]'))
+                        self.driver.execute_script("arguments[0].click();", p.find_element(by='xpath', value=FbPageXpathUtils.XPATH_LOAD_MORE_EL_TO_CLICK))
                         set_clicked.add(p)
                         sleep(self.sleep_to_load_time)
                 except StaleElementReferenceException as sere:

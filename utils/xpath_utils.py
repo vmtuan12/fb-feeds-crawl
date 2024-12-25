@@ -4,7 +4,8 @@ class FbPageXpathUtils():
     XPATH_TEXT_WITH_BG_IMG = '//div[not(@role) and (./following-sibling::div or ./preceding-sibling::div) and not(.//*[@role="button"]) and .//div[./img and not(.//text()) and @data-mcomponent="ImageArea" and ./following-sibling::*[@data-mcomponent="TextArea" and .//div[@class="fl ac"]]]]'
     # XPATH_TEXT_WITH_LOAD_MORE = '//*[(contains(@class,"m bg-s") or @class="m") and .//text() and not(@role) and not(.//*[@role="button"]) and not(./preceding-sibling::*[@role="img"]) and not(.//img) and (./following-sibling::*[1][.//img[@class="img contain"]] or (.//h1 and (./following-sibling::div or ./preceding-sibling::div)) or (.//div[contains(@style, "background-image") or contains(@style, "background-color")] and (./following-sibling::div or ./preceding-sibling::div)))]//div[text() and ./span[not(@role)]]'
     XPATH_TEXT_WITH_LOAD_MORE = '//*[(contains(@class,"m bg-s") or @class="m") and .//text() and not(@role) and not(.//*[@role="button"]) and not(./preceding-sibling::*[@role="img"]) and not(.//img) and (./following-sibling::*[1][.//img[@class="img contain"]] or (.//h1 and (./following-sibling::div or ./preceding-sibling::div)) or (.//div[contains(@style, "background-image") or contains(@style, "background-color")] and (./following-sibling::div or ./preceding-sibling::div))) and .//*[contains(text(), "See more")]]'
- 
+    
+    XPATH_LOAD_MORE_EL_TO_CLICK = './/div[./span[not(@role)] and .//text()]'
     """
     This is to find images along with each post text
     """
