@@ -25,7 +25,7 @@ class TrendDetector():
         self.detected_clusters = dict()
         self.current_index = 0
         self.cosine_threshold = float(os.getenv("COSINE_THRESHOLD", "0.45"))
-        self.merge_clusters_threshold = int(os.getenv("MERGE_CLUSTERS_THRESHOLD", "200"))
+        self.merge_clusters_threshold = int(os.getenv("MERGE_CLUSTERS_THRESHOLD", "50"))
         self.post_time_sec_threshold = int(os.getenv("POST_TIME_SEC_THRESHOLD", "30600"))
 
         self.start_time = self._get_current_time()
@@ -92,7 +92,6 @@ class TrendDetector():
         }
 
         if (current_time - post_time).total_seconds() >= self.post_time_sec_threshold:
-            TerminalLogging.log_info(f"Id {post_id} has invalid post time. Skipped.")
             return 0
         
         self._detect_high_reaction(post=post_dict)
@@ -102,14 +101,12 @@ class TrendDetector():
         self.clustered_posts.add(post_id)
 
         if "See more" in post_text or post_text.count(" ") < 9:
-            TerminalLogging.log_info(f"Id {post_id} has invalid text. Skipped.")
             return 0
         
         if len(self.posts_clusters.keys()) == 0:
             self._create_new_cluster(post=post_dict)
             return 1
         
-        TerminalLogging.log_info(f"Processing id {post_id}")
         doc_belong_to_a_node = False
         max_avg_cosine = 0
         cluster_with_max_cosine = 0
@@ -136,6 +133,8 @@ class TrendDetector():
         if doc_belong_to_a_node:
             self.posts_clusters[cluster_with_max_cosine].add_post(post_dict)
             cluster_with_max_cosine_post_len = len(self.posts_clusters[cluster_with_max_cosine].posts.keys())
+            cdb = '\n'.join([p['text'] for p in self.posts_clusters[cluster_with_max_cosine].posts.values()])
+            TerminalLogging.log_info(f"In cluster\n{cdb}\n################\n")
             if cluster_with_max_cosine_post_len % 3 == 0:
                 self._detect_cluster(cluster_id=cluster_with_max_cosine, post_len=cluster_with_max_cosine_post_len)
         
@@ -143,6 +142,7 @@ class TrendDetector():
             if len(list_keywords) == 0:
                 return 0
             self._create_new_cluster(post=post_dict)
+            TerminalLogging.log_info(f"New cluster \n{post_text}\n################\n")
 
         return 1
 
@@ -248,21 +248,20 @@ class TrendDetector():
         
         while (True):
             records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=3000)
-            TerminalLogging.log_info(f"Polled {len(records.items())} items!")
 
-            if len(records.items()) == 0 and count_consumed_msgs >= int(self.merge_clusters_threshold / 2):
+            if len(records.items()) == 0 and not cluster_is_just_merged:
                 self.merge_clusters()
                 cluster_is_just_merged = True
                 count_consumed_msgs = 0
                 continue
  
             for topic_data, consumer_records in records.items():
-                TerminalLogging.log_info(f"Processing {len(consumer_records)} records!")
                 for consumer_record in consumer_records:
                     parsed_post = consumer_record.value
                     valid_msg = self.cluster_post(post=parsed_post)
 
-                    cluster_is_just_merged = False
+                    if valid_msg > 0:
+                        cluster_is_just_merged = False
                     count_consumed_msgs += valid_msg
 
             if count_consumed_msgs >= self.merge_clusters_threshold:
@@ -273,6 +272,7 @@ class TrendDetector():
                 if not cluster_is_just_merged:
                     self.merge_clusters()
                     count_consumed_msgs = 0
+                    cluster_is_just_merged = True
 
                 self.posts_clusters = dict()
                 self.current_index = 0
