@@ -83,6 +83,7 @@ class PostCluster(BaseEntity):
         self.keywords = set()
         self.sub_clusters = set()
         self.posts = dict()
+        self.created_timestamp = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).replace(tzinfo=None).timestamp()
 
     def add_post(self, post: dict):
         self.posts[post.get("id")] = post

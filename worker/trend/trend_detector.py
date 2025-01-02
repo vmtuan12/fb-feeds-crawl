@@ -27,6 +27,8 @@ class TrendDetector():
         self.cosine_threshold = float(os.getenv("COSINE_THRESHOLD", "0.45"))
         self.merge_clusters_threshold = int(os.getenv("MERGE_CLUSTERS_THRESHOLD", "50"))
         self.post_time_sec_threshold = int(os.getenv("POST_TIME_SEC_THRESHOLD", "30600"))
+        self.cosine_merge_threshold = float(os.getenv("COSINE_MERGE_THRESHOLD", "0.55"))
+        self.trend_potential_post_num_threshold = int(os.getenv("TREND_POTENTIAL_POST_NUM_THRESHOLD", "3"))
 
         self.start_time = self._get_current_time()
 
@@ -46,6 +48,14 @@ class TrendDetector():
             return True
         
         return False
+    
+    def _reset_clusters(self):
+        cl_keys = self.posts_clusters.keys()
+        for cl_id in cl_keys:
+            if (len(self.posts_clusters[cl_id].posts.keys()) >= self.trend_potential_post_num_threshold - 1) and\
+                (self._get_current_time().timestamp() - self.posts_clusters[cl_id].created_timestamp < self.post_time_sec_threshold):
+                continue
+            self.posts_clusters.pop(cl_id)
 
     def _create_new_cluster(self, post: dict):
         cl = PostCluster(cluster_id=self.current_index)
@@ -135,7 +145,7 @@ class TrendDetector():
             cluster_with_max_cosine_post_len = len(self.posts_clusters[cluster_with_max_cosine].posts.keys())
             cdb = '\n'.join([p['text'] for p in self.posts_clusters[cluster_with_max_cosine].posts.values()])
             TerminalLogging.log_info(f"In cluster\n{cdb}\n################\n")
-            if cluster_with_max_cosine_post_len % 3 == 0:
+            if cluster_with_max_cosine_post_len % self.trend_potential_post_num_threshold == 0:
                 self._detect_cluster(cluster_id=cluster_with_max_cosine, post_len=cluster_with_max_cosine_post_len)
         
         else:
@@ -178,7 +188,7 @@ class TrendDetector():
                     if len(kw_intersection) >= math.ceil(len(cluster.keywords)/2) or \
                         len(kw_intersection) >= math.ceil(len(merged_cluster.keywords)/2):
                         cosine = GraphUtils.get_cosine(text1=" ".join([cv["text"] for cv in cluster.posts.values()]), text2=" ".join([mcv["text"] for mcv in merged_cluster.posts.values()]))
-                        if cosine >= 0.55:
+                        if cosine >= self.cosine_merge_threshold:
                             if cosine > best_consine:
                                 best_consine = cosine
                                 best_merged_cluster_id = merged_cluster_id
@@ -206,7 +216,7 @@ class TrendDetector():
         for cluster in self.posts_clusters.values():
             cluster_id = cluster.id
             set_cluster_and_subs = cluster.sub_clusters.union({cluster_id})
-            if len(cluster.posts.keys()) >= 3:
+            if len(cluster.posts.keys()) >= self.trend_potential_post_num_threshold:
                 current_cluster_posts_len = len(self.posts_clusters[cluster_id].posts.keys())
                 cluster_intersection = set_cluster_and_subs.intersection(detected_cluster_ids)
 
@@ -215,7 +225,7 @@ class TrendDetector():
                     self._detect_cluster(cluster_id=cluster_id, post_len=current_cluster_posts_len)
                 else:
                     count_detected_posts = sum([self.detected_clusters[cid] for cid in cluster_intersection])
-                    if current_cluster_posts_len - count_detected_posts >= 3:
+                    if current_cluster_posts_len - count_detected_posts >= self.trend_potential_post_num_threshold:
                         TerminalLogging.log_info(f"Detect cluster after merging")
                         self._detect_cluster(cluster_id=cluster_id, post_len=current_cluster_posts_len)
 
@@ -274,7 +284,7 @@ class TrendDetector():
                     count_consumed_msgs = 0
                     cluster_is_just_merged = True
 
-                self.posts_clusters = dict()
+                self._reset_clusters()
                 self.current_index = 0
 
     def clean_up(self):
