@@ -105,6 +105,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
             title, content = None, None
 
         set_keywords = set()
+        keywords_count_dict = {}
         event_posts_dict = []
         for d in cluster.data.values():
             formatted_d = d.copy()
@@ -116,17 +117,20 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
 
             event_posts_dict.append(formatted_d)
 
-            if len(set_keywords) == 0:
-                set_keywords.update(d_keywords)
-            else:
-                if len(d_keywords) == 0:
-                    continue
-                set_keywords = set_keywords.intersection(d_keywords)
+            for string in d_keywords:
+                if string in keywords_count_dict:
+                    keywords_count_dict[string] += 1
+                else:
+                    keywords_count_dict[string] = 1
+
+        for kw in keywords_count_dict.keys():
+            if keywords_count_dict[kw] >= math.floor(len(cluster.data.values()) * 2/3):
+                set_keywords.add(kw)
 
         event_dict = [{
             "id": cluster.id,
             "update_time": current_time_str,
-            "main_keywords": list(set_keywords) if len(set_keywords) != 0 else None,
+            "main_keywords": list(set_keywords) if len(set_keywords) != 0 else [],
             "title": title,
             "content": content
         }]
@@ -136,7 +140,7 @@ class FastTrendSummarizerWorker(TrendSummarizerWorker):
         insert_event_statement = f"""INSERT INTO {PgCons.TABLE_EVENTS} (%s) VALUES %s
         ON CONFLICT (id) DO UPDATE SET
         update_time = EXCLUDED.update_time,
-        main_keywords = COALESCE(EXCLUDED.main_keywords, {PgCons.TABLE_EVENTS}.main_keywords),
+        main_keywords = (SELECT ARRAY(SELECT DISTINCT unnest(array_cat(COALESCE({PgCons.TABLE_EVENTS}.main_keywords, ARRAY[]::text[]), COALESCE(EXCLUDED.main_keywords, ARRAY[]::text[]))))),
         title = COALESCE(EXCLUDED.title, {PgCons.TABLE_EVENTS}.title),
         content = COALESCE(EXCLUDED.content, {PgCons.TABLE_EVENTS}.content)
         """
