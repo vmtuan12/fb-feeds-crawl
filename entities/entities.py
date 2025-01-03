@@ -9,10 +9,11 @@ class BaseEntity():
         return self.__dict__
     
 class ReactionCommandEntity(BaseEntity):
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, index: str) -> None:
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
         self.command_time = now
         self.url = url
+        self.index = index
         
 class CommandEntity(BaseEntity):
     def __init__(self, cmd_type: str, page: str | None = None, scrape_threshold: int | None = None) -> None:

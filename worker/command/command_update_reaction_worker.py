@@ -54,7 +54,7 @@ class CommandWorker(BaseWorker):
         current_partition = 0
 
         for index, p in enumerate(posts):
-            command_msg = ReactionCommandEntity(url=p["_id"]).to_dict()
+            command_msg = ReactionCommandEntity(url=p["_id"], index=p["_index"]).to_dict()
             try:
                 self.kafka_producer.send(Kafka.TOPIC_REACTION_COMMAND, value=command_msg, partition=current_partition)
             except AssertionError as ae:
