@@ -80,6 +80,15 @@ class FbPageDesktopDriverWorker(DriverWorker):
         f.write(self.driver.find_element_by_xpath(value="//html").get_attribute("outerHTML"))
         f.close()
         return False
+    
+    def _close_login_dialog(self, t_index: int):
+        try:
+            close = self.driver.find_element_by_xpath(value=FbPageDesktopXpathUtils.XPATH_DIALOG_CLOSE)
+            if close != None:
+                TerminalLogging.log_info(f"Found close at post {t_index}")
+                self.driver.execute_script("arguments[0].click();", close)
+        except Exception as e:
+            pass
             
     def start(self, page_name_or_id: str, scrape_threshold: int):
         target_url = self.base_url.format(page_name_or_id)
@@ -136,13 +145,7 @@ class FbPageDesktopDriverWorker(DriverWorker):
             
             while (True):
                 try:
-                    try:
-                        close = self.driver.find_element_by_xpath(value=FbPageDesktopXpathUtils.XPATH_DIALOG_CLOSE)
-                        if close != None:
-                            TerminalLogging.log_info(f"Found close at post {t_index}")
-                            self.driver.execute_script("arguments[0].click();", close)
-                    except Exception as e:
-                        pass
+                    self._close_login_dialog(t_index=t_index)
 
                     try:
                         hover = ActionChains(self.driver).move_to_element(post_time)
@@ -151,13 +154,7 @@ class FbPageDesktopDriverWorker(DriverWorker):
                         TerminalLogging.log_error(f"Error hover at post {t_index}")
                         break
 
-                    try:
-                        close = self.driver.find_element_by_xpath(value=FbPageDesktopXpathUtils.XPATH_DIALOG_CLOSE)
-                        if close != None:
-                            TerminalLogging.log_info(f"Found close at post {t_index}")
-                            self.driver.execute_script("arguments[0].click();", close)
-                    except Exception as e:
-                        pass
+                    self._close_login_dialog(t_index=t_index)
 
                     while (True):
                         try:
@@ -166,21 +163,9 @@ class FbPageDesktopDriverWorker(DriverWorker):
                             break
                         except Exception as e:
                             TerminalLogging.log_error(f"Failed get time {t_index}")
-                            try:
-                                close = self.driver.find_element_by_xpath(value=FbPageDesktopXpathUtils.XPATH_DIALOG_CLOSE)
-                                if close != None:
-                                    TerminalLogging.log_info(f"Found close at post {t_index}")
-                                    self.driver.execute_script("arguments[0].click();", close)
-                            except Exception as e:
-                                pass
+                            self._close_login_dialog(t_index=t_index)
                             hover.perform()
-                            try:
-                                close = self.driver.find_element_by_xpath(value=FbPageDesktopXpathUtils.XPATH_DIALOG_CLOSE)
-                                if close != None:
-                                    TerminalLogging.log_info(f"Found close at post {t_index}")
-                                    self.driver.execute_script("arguments[0].click();", close)
-                            except Exception as e:
-                                pass
+                            self._close_login_dialog(t_index=t_index)
 
                 except Exception as eeee:
                     TerminalLogging.log_error(f"Unknown Error when hovering\n{eeee}")
