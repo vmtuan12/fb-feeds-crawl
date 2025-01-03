@@ -8,12 +8,13 @@ class DriverWorker(BaseWorker):
         self.driver = driver
         self.blocked_urls = [
             "*.woff2",
-            "*.css",
+            # "*.css",
             "https://lookaside.fbsbx.com/lookaside/crawler/media*"
         ]
         self.driver.execute_cdp_cmd('Network.setBlockedURLs', {"urls": self.blocked_urls})
         self.driver.execute_cdp_cmd('Network.enable', {})
-        # self.kafka_producer = KafkaProducer()
+        tz_params = {'timezoneId': 'Asia/Ho_Chi_Minh'}
+        self.driver.execute_cdp_cmd('Emulation.setTimezoneOverride', tz_params)
 
     def _clear_cache(self):
         clear_data_path = "document.querySelector('settings-ui').shadowRoot.querySelector('#main').shadowRoot.querySelector('settings-basic-page').shadowRoot.querySelector('settings-section[section=\"privacy\"]').querySelector('settings-privacy-page').shadowRoot.querySelector('settings-clear-browsing-data-dialog').shadowRoot.querySelector('cr-dialog').querySelector('#clearButton')"
