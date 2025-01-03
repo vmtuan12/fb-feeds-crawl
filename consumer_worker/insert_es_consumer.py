@@ -6,6 +6,7 @@ from custom_logging.logging import TerminalLogging
 import traceback
 from datetime import datetime
 import pytz
+import os
 
 class InsertESConsumer():
     def __init__(self) -> None:
@@ -21,6 +22,8 @@ class InsertESConsumer():
                                                 .build_es_client()
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .build()
+        
+        self.es_processing_threshold = int(os.getenv("ES_PROCESSING_THRESHOLD", "100"))
         
     def _create_document_index(self, document: dict) -> dict:
         time_format = "%Y-%m-%d %H:%M:%S"
@@ -108,7 +111,7 @@ class InsertESConsumer():
         post_list = []
 
         while (True):
-            records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=20000)
+            records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
             TerminalLogging.log_info(f"Polled {len(records.items())} items!")
             if len(records.items()) == 0:
                 self._insert(rows=post_list.copy())
@@ -120,7 +123,7 @@ class InsertESConsumer():
                     parsed_post = consumer_record.value
                     post_list.append(parsed_post)
 
-            if len(post_list) >= 200:
+            if len(post_list) >= self.es_processing_threshold:
                 self._insert(rows=post_list.copy())
                 post_list.clear()
 

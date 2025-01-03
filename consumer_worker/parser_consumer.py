@@ -40,15 +40,17 @@ class ParserConsumer():
         self.ahocorasick_automaton.make_automaton()
         
     def __parse_text(self, text: str) -> str:
-        soup = BeautifulSoup(text, 'html.parser')
-        result = soup.text.strip().replace("\n", " ").replace("\t", " ").replace("See more", "")
-        return result
+        return text.strip().replace("\n", " ").replace("\t", " ").replace("See more", "")
         
     def __parse_reactions(self, reactions: str) -> list:
         soup = BeautifulSoup(reactions, 'html.parser')
         reaction_text = soup.text.strip()
         result = [ParserUtils.approx_reactions(reaction_text)]
         return result
+        
+    def __parse_post_time(self, post_time: str) -> str:
+        soup = BeautifulSoup(post_time, 'html.parser')
+        return datetime.strptime(soup.text, "%A, %B %d, %Y at %I:%M %p").strftime("%Y-%m-%d %H:%M:%S")
     
     def __match_available_keywords(self, raw_text: str) -> set:
         found_keywords = set()
@@ -64,27 +66,23 @@ class ParserConsumer():
                 found_keywords.add(found_keyword)
 
         return found_keywords
-        
-    def __generate_id(self, text: str, page: str) -> str:
-        text_remove_space = ''.join([c for c in text if not c.isspace()]).lower()
-        union_text = unidecode(text_remove_space + page)
-        return hashlib.sha256(union_text.encode('utf-8')).hexdigest()
     
     def _flush(self):
         sleep(5)
         self.kafka_producer.flush()
 
     def _parse_message(self, msg: dict) -> dict:
-        now = datetime.strptime(msg["first_scraped_at"], "%Y-%m-%d %H:%M:%S")
         msg["text"] = self.__parse_text(msg["text"])
-        msg["id"] = self.__generate_id(text=msg["text"], page=msg["page"])
-        msg["post_time"] = ParserUtils.approx_post_time_str(now=now, raw_post_time=msg["post_time"])
+        msg["id"] = msg["url"].strip()
+        msg["post_time"] = self.__parse_post_time(post_time=msg["post_time"])
         msg["update_time"] = [msg["first_scraped_at"]]
         msg["reaction_count"] = self.__parse_reactions(reactions=msg["reaction_count"])
         msg["keywords"] = self.__match_available_keywords(raw_text=msg["text"])
 
         msg.pop('first_scraped_at')
         msg.pop('last_updated_at')
+        msg.pop('url')
+
         return msg
     
     def _split_list(self, original_list: list, size: int) -> list:
@@ -98,8 +96,10 @@ class ParserConsumer():
         list_ids = list(dict_post_by_id.keys())
         pipeline = self.redis_conn.pipeline()
         for _id in list_ids:
-            key = f'{RedisCons.PREFIX_POST_ID}.{_id}'
+            _page = dict_post_by_id[_id]["page"]
+            key = f'{RedisCons.PREFIX_POST_ID}.{_page}.{_id}'
             pipeline.get(key)
+            
         values = pipeline.execute()
         pipeline.close()
 
