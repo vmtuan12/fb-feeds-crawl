@@ -8,6 +8,12 @@ class BaseEntity():
     def to_dict(self) -> dict:
         return self.__dict__
     
+class ReactionCommandEntity(BaseEntity):
+    def __init__(self, url: str) -> None:
+        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
+        self.command_time = now
+        self.url = url
+        
 class CommandEntity(BaseEntity):
     def __init__(self, cmd_type: str, page: str | None = None, scrape_threshold: int | None = None) -> None:
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
