@@ -9,11 +9,11 @@ from entities.entities import RawPostEntity
 from custom_exception.exceptions import *
 from custom_logging.logging import TerminalLogging
 from connectors.db_connector import KafkaProducerBuilder
-from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
+from utils.constants import KafkaConnectionConstant as Kafka, SysConstant, RedisConnectionConstant as RedisCons
 from selenium.webdriver.common.action_chains import ActionChains
 from kafka import KafkaProducer
 from time import sleep, time
-import random
+from redis import Redis
 import pytz
 from datetime import datetime
 from selenium.webdriver.remote.webelement import WebElement
@@ -22,7 +22,7 @@ import os
 import traceback
 
 class FbPageDesktopDriverWorker(DriverWorker):
-    def __init__(self, profile_name: str, kafka_producer: KafkaProducer | None = None) -> None:
+    def __init__(self, profile_name: str, kafka_producer: KafkaProducer | None = None, redis_conn: Redis | None = None) -> None:
         self.base_url = "https://www.facebook.com/{}?locale=en_US"
         self.timeout_sec = int(os.getenv("TIMEOUT_SEC", "180"))
         self.count_load_more_threshold = int(os.getenv("COUNT_LOAD_MORE_THRESHOLD", "400"))
@@ -30,10 +30,10 @@ class FbPageDesktopDriverWorker(DriverWorker):
 
         self.window_w, self.window_h = 1200, 900
 
-        # self.proxy_dir = ProxiesUtils.get_proxy_dir()
+        self.proxy_dir = ProxiesUtils.get_proxy_dir()
         options = DriverUtils.create_option(arguments_dict={
             "--window-size": f"{self.window_w},{self.window_h}",
-            # "--load-extension": self.proxy_dir,
+            "--load-extension": self.proxy_dir,
             "--disable-blink-features": "AutomationControlled",
             "user-data-dir": f"{SysConstant.USER_DATA_DIR}/{profile_name}",
             "profile-directory": "Default"
@@ -43,11 +43,14 @@ class FbPageDesktopDriverWorker(DriverWorker):
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
 
-        # if kafka_producer == None:
-        #     self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
-        #                                                 .build()
-        # else:
-        #     self.kafka_producer = kafka_producer
+        if kafka_producer == None:
+            self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\
+                                                        .build()
+        else:
+            self.kafka_producer = kafka_producer
+
+        self.redis_conn = redis_conn
+        self.checked_posts = dict()
 
         driver = DriverSelector.get_driver(driver_type=DriverType.SELENIUM, options=options)
 
@@ -70,8 +73,8 @@ class FbPageDesktopDriverWorker(DriverWorker):
                 (self.driver.find_element_by_xpath(value="//span[contains(text(), 'No posts available')]") != None) or \
                 (self.driver.find_element_by_xpath(value="""//h2//*[text() and contains(text(), "This content isn't available")]""") != None):
                 TerminalLogging.log_info(f"Page is dead")
-                # self.kafka_producer.send(Kafka.TOPIC_DEAD_PAGES, {"page": page})
-                # self.kafka_producer.flush()
+                self.kafka_producer.send(Kafka.TOPIC_DEAD_PAGES, {"page": page})
+                self.kafka_producer.flush()
                 raise PageCannotAccessException()
             
             sleep(0.5)
@@ -89,11 +92,23 @@ class FbPageDesktopDriverWorker(DriverWorker):
                 self.driver.execute_script("arguments[0].click();", close)
         except Exception as e:
             pass
+
+    def _retrieve_checked_posts(self, page_name_or_id: str):
+        if page_name_or_id in self.checked_posts:
+            return
+        
+        page_keys = f'{RedisCons.PREFIX_POST_ID}.{page_name_or_id}.*'
+        urls = set()
+        for key in page_keys:
+            split_index = key.find('https')
+            urls.add(key[split_index:])
+
+        self.checked_posts[page_name_or_id] = urls
             
     def start(self, page_name_or_id: str, scrape_threshold: int):
         target_url = self.base_url.format(page_name_or_id)
+        self._retrieve_checked_posts(page_name_or_id=page_name_or_id)
 
-        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         user_agent = UserAgentUtils.get_user_agent_fb_desktop()
         self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": user_agent})
 
@@ -105,8 +120,8 @@ class FbPageDesktopDriverWorker(DriverWorker):
         if not page_is_ready:
             TerminalLogging.log_info(f"Page {page_name_or_id} needs to be rechecked")
             self.driver.save_screenshot('page_need_rechecked.png')
-            # self.kafka_producer.send(Kafka.TOPIC_RECHECK_PAGES, {"page": page_name_or_id})
-            # self.kafka_producer.flush()
+            self.kafka_producer.send(Kafka.TOPIC_RECHECK_PAGES, {"page": page_name_or_id})
+            self.kafka_producer.flush()
             raise PageNotReadyException(proxy_dir=self.proxy_dir, recheck=True)
         
         TerminalLogging.log_info(f"{target_url} is ready")
@@ -171,6 +186,9 @@ class FbPageDesktopDriverWorker(DriverWorker):
                     TerminalLogging.log_error(f"Unknown Error when hovering\n{eeee}")
                     continue
                 break
+            
+            if post_url in self.checked_posts[page_name_or_id]:
+                break
 
             try:
                 images = t.find_elements(by='xpath', value=FbPageDesktopXpathUtils.XPATH_ADDITIONAL_IMAGES)
@@ -184,6 +202,8 @@ class FbPageDesktopDriverWorker(DriverWorker):
                                                 page=page_name_or_id,
                                                 url=post_url).to_dict()
                 print(raw_post_entity)
+                self.kafka_producer.send("test-ui-raw", raw_post_entity)
+                self.checked_posts[page_name_or_id].add(post_url)
                 count_scraped += 1
 
                 if count_scraped >= scrape_threshold:
@@ -192,4 +212,4 @@ class FbPageDesktopDriverWorker(DriverWorker):
             except Exception as e:
                 continue
         
-        # self.kafka_producer.flush()
+        self.kafka_producer.flush()

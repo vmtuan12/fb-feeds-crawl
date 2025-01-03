@@ -1,11 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from worker.fb_page.fb_page_driver_worker import FbPageDriverWorker
+from worker.fb_page.fb_page_desktop_worker import FbPageDesktopDriverWorker
 from custom_exception.exceptions import *
 from utils.proxies_utils import ProxiesUtils
 import traceback
-from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder
-from utils.constants import KafkaConnectionConstant as Kafka, SysConstant
+from connectors.db_connector import KafkaProducerBuilder, KafkaConsumerBuilder, DbConnectorBuilder
+from utils.constants import KafkaConnectionConstant as Kafka, SysConstant, RedisConnectionConstant as RedisCons
 from utils.command_utils import CommandType, CommandUtils
 from utils.proxies_utils import ProxiesUtils
 from custom_logging.logging import TerminalLogging
@@ -23,12 +24,17 @@ class ConsumerWorker():
                                                     .set_group_id(Kafka.GROUP_ID_MIDDLE_CONSUMER)\
                                                     .set_topics(Kafka.TOPIC_COMMAND)\
                                                     .build()
+        self.redis_conn = DbConnectorBuilder().set_host(RedisCons.HOST)\
+                                                .set_port(RedisCons.PORT)\
+                                                .set_username(RedisCons.USERNAME)\
+                                                .set_password(RedisCons.PASSWORD)\
+                                                .build_redis()
 
-    def get_worker(self) -> FbPageDriverWorker:
+    def get_worker(self) -> FbPageDesktopDriverWorker:
         worker = getattr(self.thread_local_data, 'worker', None)
         if worker is None:
             profile_name = threading.current_thread().name.split("-")[-1]
-            worker = FbPageDriverWorker(profile_name=profile_name, kafka_producer=self.kafka_producer, min_post_count=40)
+            worker = FbPageDesktopDriverWorker(profile_name=profile_name, kafka_producer=self.kafka_producer, redis_conn=self.redis_conn)
             setattr(self.thread_local_data, 'worker', worker)
         
         return worker
@@ -59,10 +65,11 @@ class ConsumerWorker():
                     continue
                     
                 except PageCannotAccessException as pcae:
+                    worker.driver.save_screenshot('page_cannot_access.png')
                     break
 
                 except (WebDriverException, ReadTimeoutError, ConnectionError) as wde:
-                    TerminalLogging.log_error("Connection error")
+                    TerminalLogging.log_error(f"Connection error\n{traceback.format_exc()}")
                     worker.driver.save_screenshot('connection_error.png')
                     ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
                     delattr(self.thread_local_data, 'worker')
@@ -96,6 +103,7 @@ class ConsumerWorker():
         self.kafka_producer.flush()
         self.kafka_producer.close(timeout=5)
         self.kafka_consumer.close(autocommit=False)
+        self.redis_conn.close()
 
     def __del__(self):
         self.clean_up()
