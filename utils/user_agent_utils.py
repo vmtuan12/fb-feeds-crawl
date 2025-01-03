@@ -11,3 +11,7 @@ class UserAgentUtils():
         ua_list = [l.strip() for l in f.readlines()]
         selection = secrets.choice(ua_list)
         return selection
+
+    @classmethod
+    def get_user_agent_fb_desktop(cls) -> str:
+        return "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"

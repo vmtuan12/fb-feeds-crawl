@@ -23,3 +23,19 @@ class FbPageXpathUtils():
     """
     XPATH_ADDITIONAL_POST_TIME = './preceding-sibling::*[1]//div[not(@data-focusable)]//div[@data-mcomponent="TextArea"]//span[not(@role)]'
     XPATH_ADDITIONAL_POST_TIME_ALTER = './preceding-sibling::*[.//div[contains(@data-mcomponent, "TextArea")]][1]//div[contains(@data-mcomponent, "TextArea")][last()]//span[not(@role)]'
+
+class FbPageDesktopXpathUtils():
+    XPATH_TEXT = "//*[@role='main']//*[@data-ad-rendering-role='story_message']"
+    XPATH_SEE_MORE_BTN = ".//*[@role='button' and contains(text(), 'See more')]"
+    XPATH_ADDITIONAL_POST_TIME = ".//ancestor::*[2]/preceding-sibling::*[.//a[@attributionsrc]]//a[@attributionsrc and not(starts-with(@href, 'http')) and not(starts-with(@href, '/'))]"
+    XPATH_ADDITIONAL_IMAGES = "./parent::*/following-sibling::*//img"
+    XPATH_ADDITIONAL_REACTION = ".//ancestor::*[2]/following-sibling::*[.//*[@aria-label='See who reacted to this' and @role='toolbar']]//*[@aria-label='See who reacted to this' and @role='toolbar']/following-sibling::*[@aria-hidden='true']"
+    XPATH_TOOLTIP = "//*[@role='tooltip']"
+
+
+    XPATH_DIALOG_CLOSE = "//*[@role='dialog']//*[@aria-label='Close']"
+    XPATH_OBSTABLES = [
+        '//*[@role="banner"]',
+        '//div[@data-nosnippet]',
+        '//div[contains(@style, "top") and contains(@style, "z-index: auto")]'
+    ]

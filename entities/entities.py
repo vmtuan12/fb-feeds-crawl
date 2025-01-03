@@ -18,7 +18,7 @@ class CommandEntity(BaseEntity):
 
 class RawPostEntity(BaseEntity):
 
-    def __init__(self, text: str, images: list[str], reaction_count: int, post_time: str, page: str):
+    def __init__(self, text: str, images: list[str], reaction_count: int, post_time: str, page: str, url=None):
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).strftime("%Y-%m-%d %H:%M:%S")
         self.text = text
         self.images = images
@@ -27,6 +27,7 @@ class RawPostEntity(BaseEntity):
         self.page = page
         self.first_scraped_at = now
         self.last_updated_at = now
+        self.url = url
         
 class Builder(ABC):
     @abstractmethod
