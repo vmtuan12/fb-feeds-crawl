@@ -52,6 +52,7 @@ class IntervalTrendWorker(TrendSummarizerWorker):
             result.update({"id": event_id})
             self.events.append(result)
         except Exception as e:
+            TerminalLogging.log_error(f"Output response\n{response.text}")
             TerminalLogging.log_error(f"Failed summarizing event {event_id}\n{traceback.format_exc()}")
     
     def _query_es_by_id(self, time_month: str, ids: Iterable) -> dict:

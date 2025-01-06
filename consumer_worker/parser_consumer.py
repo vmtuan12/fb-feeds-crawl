@@ -18,7 +18,7 @@ class ParserConsumer():
         self.kafka_consumer = KafkaConsumerBuilder()\
                                 .set_brokers(Kafka.BROKERS)\
                                 .set_group_id(Kafka.GROUP_ID_PARSER)\
-                                .set_auto_offset_reset("earliest")\
+                                .set_auto_offset_reset("latest")\
                                 .set_topics(Kafka.TOPIC_RAW_POST)\
                                 .build()
         self.kafka_producer = KafkaProducerBuilder().set_brokers(Kafka.BROKERS)\

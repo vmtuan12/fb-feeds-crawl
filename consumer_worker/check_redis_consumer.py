@@ -10,7 +10,7 @@ class CheckRedisConsumer():
     def __init__(self) -> None:
         self.kafka_consumer = KafkaConsumerBuilder().set_brokers(Kafka.BROKERS)\
                                                     .set_group_id(Kafka.GROUP_ID_CACHE_CHECKER)\
-                                                    .set_auto_offset_reset("earliest")\
+                                                    .set_auto_offset_reset("latest")\
                                                     .set_topics(Kafka.TOPIC_PARSED_POST)\
                                                     .build(avro_schema_path=Schema.PARSED_POST_SCHEMA)
         self.redis_conn = DbConnectorBuilder().set_host(RedisCons.HOST)\
@@ -20,11 +20,11 @@ class CheckRedisConsumer():
                                                 .build_redis()
         self.ttl_keyword = int(os.getenv("TTL_KEYWORD", "21600"))
         self.ttl_id = int(os.getenv("TTL_ID", "7200"))
+        self.redis_processing_threshold = int(os.getenv("REDIS_PROCESSING_THRESHOLD", "50"))
     
     def _process_recent_docs(self, docs: list[dict], ttl_id=7200, ttl_keyword=21600):
         current_time = datetime.now()
         list_keys = set()
-        dict_keyword_post = dict()
  
         TerminalLogging.log_info(f"Inserting into redis...")
         for d in docs:
@@ -36,15 +36,6 @@ class CheckRedisConsumer():
             if (current_time - post_time).days > 2 or (d.get("keywords") == None):
                 continue
  
-            for keyword in d.get("keywords"):
-                if keyword == "":
-                    continue
-                keyword_post_time = f'{d["post_time"].split(" ")[0]}.{keyword}'
-                if dict_keyword_post.get(keyword_post_time) == None:
-                    dict_keyword_post[keyword_post_time] = [post_id]
-                else:
-                    dict_keyword_post[keyword_post_time].append(post_id)
- 
         try:
             value = ""
             pipeline = self.redis_conn.pipeline()
@@ -52,14 +43,9 @@ class CheckRedisConsumer():
             for key in list_keys:
                 pipeline.set(key, value, ex=ttl_id)
  
-            for keyword in dict_keyword_post.keys():
-                corresponding_posts = dict_keyword_post.get(keyword)
-                keyword_keyname = f"{RedisCons.PREFIX_KEYWORD}.{keyword}"
-                pipeline.sadd(keyword_keyname, *corresponding_posts)
-                pipeline.expire(keyword_keyname, ttl_keyword)
- 
             pipeline.execute()
             pipeline.close()
+
             TerminalLogging.log_info(f"Done inserting into redis!")
         except Exception as e:
             TerminalLogging.log_error(traceback.format_exc())
@@ -69,9 +55,9 @@ class CheckRedisConsumer():
         post_list = []
  
         while (True):
-            records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=20000)
+            records = self.kafka_consumer.poll(max_records=max_records, timeout_ms=10000)
             TerminalLogging.log_info(f"Polled {len(records.items())} items!")
-            if len(records.items()) == 0:
+            if len(records.items()) == 0 and len(post_list) > 0:
                 self._process_recent_docs(docs=post_list.copy(), ttl_id=self.ttl_id, ttl_keyword=self.ttl_keyword)
                 post_list.clear()
  
@@ -81,7 +67,7 @@ class CheckRedisConsumer():
                     parsed_post = consumer_record.value
                     post_list.append(parsed_post)
  
-            if len(post_list) >= 50:
+            if len(post_list) >= self.redis_processing_threshold:
                 self._process_recent_docs(docs=post_list.copy(), ttl_id=self.ttl_id, ttl_keyword=self.ttl_keyword)
                 post_list.clear()
  
