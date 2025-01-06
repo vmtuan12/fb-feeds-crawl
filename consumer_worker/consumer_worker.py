@@ -45,7 +45,7 @@ class ConsumerWorker():
         worker = None
         try:
             page_not_ready_count = 0
-            while (True):
+            while (page_not_ready_count <= 5):
                 if worker == None:
                     worker = self.get_worker()
 
@@ -58,7 +58,10 @@ class ConsumerWorker():
 
                     break
 
-                except PageNotReadyException as pe:
+                except (PageNotReadyException, PageNeedLoginDesktop) as pe:
+                    page_not_ready_count += 1
+                    TerminalLogging.log_error(f"Page needs login")
+                    worker.driver.save_screenshot('page_not_ready.png')
                     ProxiesUtils.finish_proxy(proxy_dir=worker.proxy_dir)
                     delattr(self.thread_local_data, 'worker')
                     worker = None
@@ -79,6 +82,9 @@ class ConsumerWorker():
                 except Exception as e:
                     TerminalLogging.log_error(traceback.format_exc())
                     break
+
+            if page_not_ready_count > 5:
+                self.kafka_producer.send(Kafka.TOPIC_RECHECK_PAGES, {"page": page_name_or_id})
                 
         except Exception as eee:
             TerminalLogging.log_error(f"{page_name_or_id}\n{traceback.format_exc()}")

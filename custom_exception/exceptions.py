@@ -4,6 +4,10 @@ class PageNotReadyException(Exception):
         self.recheck = recheck
         super().__init__(*args)
 
+class PageNeedLoginDesktop(Exception):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+        
 class PageCannotAccessException(Exception):
     def __init__(self, *args: object) -> None:
         super().__init__(*args)

@@ -68,8 +68,10 @@ class FbPageDesktopDriverWorker(DriverWorker):
                 TerminalLogging.log_info(f"Cannot reach page")
                 raise PageNotReadyException(proxy_dir=self.proxy_dir)
 
-            if ("login" in self.driver.current_url) or \
-                ("not found" in self.driver.title) or \
+            if ("login" in self.driver.current_url):
+                raise PageNeedLoginDesktop()
+
+            if ("not found" in self.driver.title) or \
                 (self.driver.find_element_by_xpath(value="//span[contains(text(), 'No posts available')]") != None) or \
                 (self.driver.find_element_by_xpath(value="""//h2//*[text() and contains(text(), "This content isn't available")]""") != None):
                 TerminalLogging.log_info(f"Page is dead")
@@ -201,15 +203,18 @@ class FbPageDesktopDriverWorker(DriverWorker):
                                                 post_time=real_post_time,
                                                 page=page_name_or_id,
                                                 url=post_url).to_dict()
-                print(raw_post_entity)
+                
                 self.kafka_producer.send("test-ui-raw", raw_post_entity)
                 self.checked_posts[page_name_or_id].add(post_url)
+
                 count_scraped += 1
 
-                if count_scraped >= scrape_threshold:
+                if t_index >= scrape_threshold:
                     break
 
             except Exception as e:
+                TerminalLogging.log_error(f"Post at {t_index} failed\n{e}")
                 continue
         
+        TerminalLogging.log_info(f"Scraped {count_scraped}/{scrape_threshold} of {page_name_or_id}")
         self.kafka_producer.flush()
