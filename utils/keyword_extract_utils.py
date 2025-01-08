@@ -6,6 +6,7 @@ from utils.parser_utils import ParserUtils
 from custom_exception.exceptions import KeywordsNotMatchedException
 from custom_logging.logging import TerminalLogging
 from utils.constants import APIConstant as API
+from utils.model_api_utils import ModelApiUtils
 
 class KeywordExtractionUtils():
     BASE_PROMPT = """
@@ -40,23 +41,17 @@ class KeywordExtractionUtils():
 
                 TerminalLogging.log_info(f"Start extracting keywords ...")
                 prompt = cls.BASE_PROMPT.format('{id1: "keyword1,keyword2,keyword3", id2: "keyword1,keyword2,keyword3", id3: "keyword1,keyword2,keyword3"}')
-
-                body = {"prompt": [
-                    {'role': 'system', 'content': prompt},
-                    {'role': 'user', 'content': f'{list_text_str}'}
-                ], "json_output": True}
-
-                response = requests.post(url=API.MODEL_API, data=json.dumps(body))
                 
-                # result_str = json.loads(response.text).get("data")
+                response = ModelApiUtils.send_request_directly(prompt=prompt, input_data=list_text_str)
+                
                 try:
-                    dict_keywords_by_post = json.loads(response.text).get("data")
+                    dict_keywords_by_post = response
                 except Exception as e:
-                    TerminalLogging.log_error(response.text)
+                    TerminalLogging.log_error(response)
                     raise json.decoder.JSONDecodeError(msg="Cannot decode")
 
                 if dict_keywords_by_post == None:
-                    TerminalLogging.log_error(response.text)
+                    TerminalLogging.log_error(response)
                     raise json.decoder.JSONDecodeError(msg="Keyword dict is None")
 
                 for key in dict_keywords_by_post.keys():

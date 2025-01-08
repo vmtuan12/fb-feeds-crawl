@@ -7,6 +7,7 @@ from utils.insert_pg_utils import InsertPgUtils
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from utils.constants import APIConstant as API
+from utils.model_api_utils import ModelApiUtils
 import pytz
 import os
 import json
@@ -41,14 +42,10 @@ class IntervalTrendWorker(TrendSummarizerWorker):
         Ngoài ra, viết thêm 1 tiêu đề thú vị cho đoạn văn vừa tóm tắt.
         Nếu có đoạn văn nào không liên quan tới phần lớn các đoạn văn, không tóm tắt nội dung đoạn văn đó.
         Kết quả đầu ra có dạng Json như sau {"title": <tiêu đề>, "content": <nội dung tóm tắt>}"""
-        body = {"prompt": [
-            {'role': 'system', 'content': prompt},
-            {'role': 'user', 'content': f'{str(list_text)}'}
-        ], "json_output": True}
 
         try:
-            response = requests.post(url=API.MODEL_API, data=json.dumps(body))
-            result = json.loads(response.text).get("data")
+            response = ModelApiUtils.send_request_directly(prompt=prompt, input_data=str(list_text))
+            result = response
             result.update({"id": event_id})
             self.events.append(result)
         except Exception as e:
