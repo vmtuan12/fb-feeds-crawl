@@ -7,6 +7,8 @@ from custom_exception.exceptions import KeywordsNotMatchedException
 from custom_logging.logging import TerminalLogging
 from utils.constants import APIConstant as API
 from utils.model_api_utils import ModelApiUtils
+from underthesea import ner
+import re
 
 class KeywordExtractionUtils():
     BASE_PROMPT = """
@@ -25,6 +27,8 @@ class KeywordExtractionUtils():
     You are prohibited from changing the key.
     Every key of the input must be processed, do not skip any of them. If you cannot extract any keywords from the paragraph, the result is empty string ""
     """
+
+    STRIP_CHARS = " .,!@#$%^&*()=|\"\';:‘’“”‼️-[]{}?<>…/~+"
 
     @classmethod
     def enrich_keywords(cls, list_data: list[dict]) -> list:
@@ -74,3 +78,89 @@ class KeywordExtractionUtils():
                 TerminalLogging.log_error(traceback.format_exc())
                 TerminalLogging.log_error(f"Model returns wrong format/data")
                 continue
+
+    @classmethod
+    def extract_ne_underthesea_basic(cls, text: str) -> set:
+        ne_tags = {"PER", "LOC", "ORG", "GPE", "TIME"}
+        set_ne = set()
+
+        ne = ""
+        for r in ner(text):
+            whole_tag = r[3]
+            if whole_tag.split("-")[-1] in ne_tags:
+                if ne == "":
+                    ne = r[0]
+                else:
+                    pre_tag = whole_tag.split("-")[0]
+                    if pre_tag == 'B':
+                        ne = ne.strip(cls.STRIP_CHARS)
+                        if ne != "" and len(ne) > 1 and (". " not in ne):
+                            set_ne.add(ne)
+                        ne = r[0]
+                    else:
+                        ne += " " + r[0]
+            else:
+                if ne != "":
+                    ne = ne.strip(cls.STRIP_CHARS)
+                    if ne != "" and len(ne) > 1 and (". " not in ne):
+                        set_ne.add(ne)
+                    ne = ""
+
+        return set_ne
+    
+    @classmethod
+    def extract_ne_underthesea(cls, text: str) -> set:
+        ner_result = ner(text, deep=True)
+        if len(ner_result) == 0:
+            TerminalLogging.log_info(f"No named entity found in \n{text}")
+            return set()
+        set_ne = set()
+        named_entity = ""
+        remove_space = False
+        for pos, n in enumerate(ner_result):
+            if named_entity == "":
+                named_entity += n["word"]
+                continue
+            if (pos > 0) and (ner_result[pos - 1]["index"] == n["index"] - 1):
+                if n["word"] == '.' or n["word"] == '-':
+                    named_entity += n["word"]
+                    remove_space = True
+                else:
+                    if n["word"].startswith("##"):
+                        word_to_append = n["word"].replace("##", "")
+                        remove_space = False
+                    elif remove_space:
+                        word_to_append = n["word"]
+                        remove_space = False
+                    else:
+                        word_to_append = " " + n["word"]
+                    named_entity += word_to_append
+            else:
+                named_entity = named_entity.strip(cls.STRIP_CHARS)
+                if named_entity != "" and len(named_entity) > 1 and (". " not in named_entity):
+                    set_ne.add(named_entity)
+                named_entity = n["word"]
+
+        last_ne = ner_result[-1]["word"]
+        if len(ner_result) > 1 and ner_result[-1]["index"] - 1 != ner_result[-2]["index"] and (". " not in last_ne):
+            set_ne.add(last_ne)
+
+        if named_entity != "":
+            named_entity = named_entity.strip(cls.STRIP_CHARS)
+            if named_entity != "" and len(named_entity) > 1 and (". " not in named_entity):
+                set_ne.add(named_entity)
+
+        return set_ne
+    
+    @classmethod
+    def extract_ne_by_capitalization(cls, text: str) -> set:
+        set_ne = set()
+
+        regex = r"([A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴÝỶỸ][a-zàáâãèéêìíòóôõùúăđĩũơưăạảấầẩẫậắằẳẵặẹẻẽềềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵýỷỹ]*-?[a-zàáâãèéêìíòóôõùúăđĩũơưăạảấầẩẫậắằẳẵặẹẻẽềềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵýỷỹ]* ?){2,}"
+        matches = re.finditer(regex, text, re.MULTILINE)
+        for matchNum, match in enumerate(matches, start=1):
+            matched_cap = match.group().strip()
+            if " " in matched_cap:
+                set_ne.add(matched_cap)
+
+        return set_ne
