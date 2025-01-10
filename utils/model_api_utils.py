@@ -5,6 +5,7 @@ import time
 from utils.constants import APIConstant as API
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
+from custom_logging.logging import TerminalLogging
 
 class ModelApiUtils():
     gemini_api_key_index = 0
@@ -52,6 +53,7 @@ class ModelApiUtils():
                 response = model.generate_content(prompt)
                 break
             except ResourceExhausted as re:
+                TerminalLogging.log_error("Exhausted Gemini API, waiting...")
                 time.sleep(1)
                 continue
             finally:
