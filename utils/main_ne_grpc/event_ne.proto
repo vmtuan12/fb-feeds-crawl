@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package consumer;
+
+import "google/protobuf/empty.proto";
+
+service Consumer {
+  rpc ProcessEvent (EventRequest) returns (GeneralResponse);
+  rpc GetEventSeries (EventRequest) returns (EventSeriesResponse);
+  rpc Ping (google.protobuf.Empty) returns (GeneralResponse);
+}
+
+message EventRequest {
+  string id = 1;
+  string text = 2;
+}
+
+message StringList {
+  repeated string items = 1; // List of strings
+}
+
+message EventSeriesResponse {
+  int32 response_code = 1;
+  map<string, StringList> ne_events = 2;
+}
+
+message GeneralResponse {
+  int32 response_code = 1;
+  string message = 2;
+}
