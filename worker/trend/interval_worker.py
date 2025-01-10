@@ -41,6 +41,8 @@ class IntervalTrendWorker(TrendSummarizerWorker):
         prompt = """Bạn là một nhà văn với nhiều năm kinh nghiệm. Với dữ liệu đầu vào là 1 danh sách các đoạn văn, tóm tắt các đoạn văn đó thành một đoạn văn đầy đủ chi tiết.
         Ngoài ra, viết thêm 1 tiêu đề thú vị cho đoạn văn vừa tóm tắt.
         Nếu có đoạn văn nào không liên quan tới phần lớn các đoạn văn, không tóm tắt nội dung đoạn văn đó.
+        Không tóm tắt theo kiểu "Các bài văn này nói về ...", hãy nhập tâm vào làm chính chủ thể của đoạn văn.
+        Viết tóm tắt và tiêu đề một cách gây tò mò nhất có thể, sử dụng những từ thu hút sự chú ý cho các thông tin, trừ thông tin liên quan đến chính trị và các lãnh đạo.
         Kết quả đầu ra có dạng Json như sau {"title": <tiêu đề>, "content": <nội dung tóm tắt>}"""
 
         try:

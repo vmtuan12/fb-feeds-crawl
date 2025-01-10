@@ -27,6 +27,7 @@ class TrendDetector():
         self.cosine_threshold = float(os.getenv("COSINE_THRESHOLD", "0.45"))
         self.merge_clusters_threshold = int(os.getenv("MERGE_CLUSTERS_THRESHOLD", "50"))
         self.post_time_sec_threshold = int(os.getenv("POST_TIME_SEC_THRESHOLD", "30600"))
+        self.cluster_sustain_threshold = int(os.getenv("CLUSTER_SUSTAIN_THRESHOLD", "43200"))
         self.cosine_merge_threshold = float(os.getenv("COSINE_MERGE_THRESHOLD", "0.55"))
         self.trend_potential_post_num_threshold = int(os.getenv("TREND_POTENTIAL_POST_NUM_THRESHOLD", "3"))
 
@@ -50,10 +51,10 @@ class TrendDetector():
         return False
     
     def _reset_clusters(self):
-        cl_keys = self.posts_clusters.keys()
+        cl_keys = list(self.posts_clusters.keys())
         for cl_id in cl_keys:
-            if (len(self.posts_clusters[cl_id].posts.keys()) >= self.trend_potential_post_num_threshold - 1) and\
-                (self._get_current_time().timestamp() - self.posts_clusters[cl_id].created_timestamp < self.post_time_sec_threshold):
+            if (len(self.posts_clusters[cl_id].posts.keys()) >= self.trend_potential_post_num_threshold) and\
+                (self._get_current_time().timestamp() - self.posts_clusters[cl_id].created_timestamp < self.cluster_sustain_threshold):
                 continue
             self.posts_clusters.pop(cl_id)
 
