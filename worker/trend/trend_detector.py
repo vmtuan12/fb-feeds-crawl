@@ -55,6 +55,7 @@ class TrendDetector():
         for cl_id in cl_keys:
             if (len(self.posts_clusters[cl_id].posts.keys()) >= self.trend_potential_post_num_threshold) and\
                 (self._get_current_time().timestamp() - self.posts_clusters[cl_id].created_timestamp < self.cluster_sustain_threshold):
+                TerminalLogging.log_info(f"Retain cluster with posts {list(self.posts_clusters[cl_id].posts.keys())}")
                 continue
             self.posts_clusters.pop(cl_id)
 
@@ -103,10 +104,12 @@ class TrendDetector():
         }
 
         if (current_time - post_time).total_seconds() >= self.post_time_sec_threshold:
+            TerminalLogging.log_info(f"Post at {post['post_time']} expired. Skipped")
             return 0
         
         self._detect_high_reaction(post=post_dict)
         if post_id in self.clustered_posts:
+            TerminalLogging.log_info("Post already clustered. Skipped")
             return 0
         
         self.clustered_posts.add(post_id)
