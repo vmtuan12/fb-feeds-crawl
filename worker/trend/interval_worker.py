@@ -8,6 +8,10 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from utils.constants import APIConstant as API
 from utils.model_api_utils import ModelApiUtils
+import utils.main_ne_grpc.event_ne_pb2 as event_ne_pb2
+import utils.main_ne_grpc.event_ne_pb2_grpc as event_ne_pb2_grpc
+from google.protobuf import json_format
+import grpc
 import pytz
 import os
 import json
@@ -33,17 +37,37 @@ class IntervalTrendWorker(TrendSummarizerWorker):
         self.max_event_text_length_threshold = int(os.getenv("MAX_EVENT_TEXT_LENGTH_THRESHOLD", "100"))
         self.sum_reactions_threshold = int(os.getenv("SUM_REACTIONS_THRESHOLD", "100"))
 
+        self.graph_constructor_host = os.getenv("GRAPH_CONSTRUCTOR_HOST", "localhost")
+        self.graph_constructor_port = os.getenv("GRAPH_CONSTRUCTOR_PORT", "50052")
+
     def _get_current_time(self) -> datetime:
         return datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).replace(tzinfo=None)
     
+    def _send_event_to_graph(self, event_id: str, event_text: str):
+        if event_text == None or event_id == None:
+            TerminalLogging.log_info(f"Nothing to send")
+            return
+
+        try:
+            with grpc.insecure_channel(f'{self.graph_constructor_host}:{self.graph_constructor_port}') as channel:
+                stub = event_ne_pb2_grpc.ConsumerStub(channel)
+                response = stub.ProcessEvent(event_ne_pb2.EventRequest(id=event_id, 
+                                                                    text=event_text))
+                TerminalLogging.log_info(json_format.MessageToDict(response))
+        except Exception as e:
+            TerminalLogging.log_error(f"Error sending event to graph service\n{traceback.format_exc()}")
+    
     def _summarize_texts(self, list_text: list, event_id: str) -> dict:
         TerminalLogging.log_info(f"Start summarizing event {event_id}")
-        prompt = """Bạn là một nhà văn với nhiều năm kinh nghiệm. Với dữ liệu đầu vào là 1 danh sách các đoạn văn, tóm tắt các đoạn văn đó thành một đoạn văn đầy đủ chi tiết.
+        prompt = """
+        Bạn là một nhà báo VnExpress với nhiều năm kinh nghiệm. Với dữ liệu đầu vào là 1 danh sách các đoạn văn, tóm tắt các đoạn văn đó thành một đoạn văn đầy đủ chi tiết.
         Ngoài ra, viết thêm 1 tiêu đề thú vị cho đoạn văn vừa tóm tắt.
         Nếu có đoạn văn nào không liên quan tới phần lớn các đoạn văn, không tóm tắt nội dung đoạn văn đó.
-        Không tóm tắt theo kiểu "Các bài văn này nói về ...", hãy nhập tâm vào làm chính chủ thể của đoạn văn.
-        Viết tóm tắt và tiêu đề một cách gây tò mò nhất có thể, sử dụng những từ thu hút sự chú ý cho các thông tin, trừ thông tin liên quan đến chính trị và các lãnh đạo.
-        Kết quả đầu ra có dạng Json như sau {"title": <tiêu đề>, "content": <nội dung tóm tắt>}"""
+        Không tóm tắt theo kiểu "Các bài văn này nói về ...", hãy nhập tâm vào làm chính chủ thể của đoạn văn. Không cần câu kết luận để tổng kết, chỉ tóm tắt sự kiện trong các đoạn văn. Viết các câu văn với đầy đủ các thực thể và các Event Trigger sao cho dễ dàng thực hiện Event Extraction.
+        Viết tóm tắt và tiêu đề một cách gây tò mò nhất có thể, nửa úp nửa mở gây tò mò và nghi ngờ nếu có thể, sử dụng những từ thu hút sự chú ý cho các thông tin, trừ thông tin liên quan đến chính trị và các lãnh đạo.
+        Kết quả đầu ra có dạng Json như sau {"title": <tiêu đề>, "content": <nội dung tóm tắt>}
+        Viết tiêu đề dựa trên các mẫu sau đây: "Phương Mỹ Chi áp lực trong lần đầu đóng chính điện ảnh", "Soobin gây chú ý khi xuất hiện bên hoa hậu Thanh Thủy", "Khoảnh khắc lễ ăn hỏi của Phương Nhi và con trai tỷ phú Phạm Nhật Vượng", "Dàn hoa hậu dự thảm đỏ Làn Sóng Xanh 2024", "Tác phẩm trắng trơn đạt hơn một triệu USD", "Thượng Hải mời Taylor Swift làm concert", "Con trai cao gần 1,8 m của diễn viên Lê Phương", "Phim về mỹ nữ tài hoa thời Đường gây sốt". Viết một cách mập mờ để gây sự chú ý, với bố cục là Thực thể làm gì, không chứa dấu ':'
+        """
 
         try:
             response = ModelApiUtils.send_request_directly(prompt=prompt, input_data=str(list_text))
@@ -53,6 +77,8 @@ class IntervalTrendWorker(TrendSummarizerWorker):
         except Exception as e:
             TerminalLogging.log_error(f"Output response\n{response.text}")
             TerminalLogging.log_error(f"Failed summarizing event {event_id}\n{traceback.format_exc()}")
+        finally:
+            self._send_event_to_graph(event_id=event_id, event_text=result.get("content"))
     
     def _query_es_by_id(self, time_month: str, ids: Iterable) -> dict:
         TerminalLogging.log_info(f"Starting querying documents by ids from Elasticsearch...")
